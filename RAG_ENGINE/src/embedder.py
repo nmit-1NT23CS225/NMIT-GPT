@@ -1,31 +1,23 @@
 # embedder.py
-from openai import OpenAI
-from dotenv import load_dotenv
-import os
+from sentence_transformers import SentenceTransformer
 
-load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-EMBED_MODEL = "text-embedding-3-small"
+# Load MPNet model for local embeddings
+model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
 def embed_query(query: str):
     """
-    Generate dense embedding for a user query text.
+    Generate dense embedding for a user query text using MPNet-base-v2.
     Returns list[float] embedding vector
     """
     try:
-        response = client.embeddings.create(
-            model=EMBED_MODEL,
-            input=query
-        )
-        return response.data[0].embedding
-
+        embedding = model.encode(query).tolist()
+        return embedding
     except Exception as e:
-        print("Error generating embedding:", e)
+        print("Embedding error:", e)
         return None
+vec = embed_query("test")
+print(len(vec))
 
 
-if __name__ == "__main__":
-    print(embed_query("Hello world!"))
+#if __name__ == "__main__":
+   # print(embed_query("Hello world!"))

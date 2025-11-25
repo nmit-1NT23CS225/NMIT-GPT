@@ -1,14 +1,16 @@
 # llm_interface.py
-from openai import OpenAI
+from groq import Groq
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
 
-LLM_MODEL = "gpt-4o-mini"   # Fast & cheap, works well for RAG
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+LLM_MODEL = "llama3-8b-8192"
+
+
+
 
 
 def format_context(docs: list):
