@@ -14,8 +14,7 @@ CREATE TABLE faculty_biodata (
     orcid_id TEXT[],
     linkedin_id TEXT[],
     research TEXT[],
-    text_data TEXT[],
-    embedding VECTOR(768),
+    raw_text TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -34,7 +33,5 @@ BEFORE UPDATE ON faculty_biodata
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
--- Index on embedding for vector similarity search
-CREATE INDEX ON faculty_biodata
-USING hnsw (embedding vector_l2_ops);
+
 
