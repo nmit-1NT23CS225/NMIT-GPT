@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 import os
 import ast   
-model = SentenceTransformer("all-mpnet-base-v2")
+model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
 def chunk_text(text, max_chars=500):
     if not text or text.strip() == "":
         return []
@@ -71,3 +71,4 @@ def generate_chunk_embeddings():
 
 if __name__ == "__main__":
     generate_chunk_embeddings()
+
