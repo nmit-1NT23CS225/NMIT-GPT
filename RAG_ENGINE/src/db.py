@@ -1,6 +1,21 @@
+from supabase import create_client
+from dotenv import load_dotenv
+import os
 
-import psycopg2
-from config.settings import POSTGRES_CONN
+load_dotenv()
 
-def get_connection():
-    return psycopg2.connect(POSTGRES_CONN)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def run_rpc(embedding: list, top_k: int):
+    """Execute vector similarity search via Supabase RPC."""
+    response = supabase.rpc(
+        "match_faculty",
+        {
+            "query_embedding": embedding,
+            "match_count": top_k
+        }
+    ).execute()
+    return response.data

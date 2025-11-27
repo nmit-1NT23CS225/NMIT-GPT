@@ -1,35 +1,35 @@
-# pipeline.py
+from .retriever import retrieve_top_chunks
+from .llm_interface import generate_llm_answer
 
-from .embedder import embed_query
-from .retriever import search_similar
-from .llm_interface import generate_answer
+def build_prompt(user_query: str, chunks: list) -> str:
+    """Format context and question into a prompt for LLaMA."""
+    context = ""
+    for c in chunks:
+        context += f"- {c['content']}\n"
 
+    prompt = f"""
+Use the provided context to answer the question.
+If the context does not contain the answer, respond:
+"I am not able to find that information in the knowledge base."
+
+[Context]
+{context}
+
+[Question]
+{user_query}
+
+[Answer]
+"""
+    return prompt.strip()
 
 def answer_query(user_query: str, top_k: int = 5):
-    """
-    High-level RAG pipeline:
-    1. Embed the query
-    2. Vector search in DB
-    3. LLM response using retrieved docs
-    """
-    print("[RAG] Embedding query ...")
-    embedding = embed_query(user_query)
+    """End-to-end RAG pipeline: embed → retrieve → prompt → LLM answer."""
+    chunks = retrieve_top_chunks(user_query, top_k)
+    prompt = build_prompt(user_query, chunks)
+    answer = generate_llm_answer(prompt)
 
-    if embedding is None:
-        return "Error generating embedding!"
-
-    print("[RAG] Searching vector DB ...")
-    docs = search_similar(embedding, top_k)
-
-    print(f"[RAG] Retrieved {len(docs)} relevant documents")
-
-    print("[RAG] Generating answer ...")
-    answer = generate_answer(user_query, docs)
-
-    return answer
-
-#remove this block once we import data from UI
-if __name__ == "__main__":
-    query = "What is machine learning?"
-    result = answer_query(query)
-    print("\nFinal Answer:\n", result)
+    return {
+        "query": user_query,
+        "answer": answer,
+        "chunks_used": chunks
+    }

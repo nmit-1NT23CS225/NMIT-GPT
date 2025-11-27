@@ -1,6 +1,6 @@
-psycopg2-binary
+supabase
 python-dotenv
-openai
+sentence-transformers
 numpy
-fastapi
-uvicorn
+requests
+groq

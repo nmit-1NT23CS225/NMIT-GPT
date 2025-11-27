@@ -1,23 +1,12 @@
-# embedder.py
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+import os
 
-# Load MPNet model for local embeddings
-model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+load_dotenv()
 
-def embed_query(query: str):
-    """
-    Generate dense embedding for a user query text using MPNet-base-v2.
-    Returns list[float] embedding vector
-    """
-    try:
-        embedding = model.encode(query).tolist()
-        return embedding
-    except Exception as e:
-        print("Embedding error:", e)
-        return None
-vec = embed_query("test")
-print(len(vec))
+MODEL_NAME = os.getenv("EMBEDDING_MODEL")
+model = SentenceTransformer(MODEL_NAME)
 
-
-#if __name__ == "__main__":
-   # print(embed_query("Hello world!"))
+def embed_query(text: str):
+    """Generate a 768-dim embedding for the incoming query."""
+    return model.encode(text).tolist()
