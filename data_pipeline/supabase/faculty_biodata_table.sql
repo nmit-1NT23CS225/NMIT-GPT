@@ -14,6 +14,7 @@ CREATE TABLE faculty_biodata (
     orcid_id TEXT[],
     linkedin_id TEXT[],
     research TEXT[],
+    raw_text TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -31,5 +32,6 @@ CREATE TRIGGER update_faculty_timestamp
 BEFORE UPDATE ON faculty_biodata
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
+
 
 
