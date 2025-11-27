@@ -12,9 +12,9 @@ def retrieve_top_chunks(query: str, top_k: int = 5):
     cleaned = []
     for row in results:
         cleaned.append({
-            "content": row.get("content"),
+            "content": row.get("chunk_text"),
             "metadata": row.get("metadata"),
-            "similarity": row.get("similarity")
+            "similarity": row.get("distance")
         })
 
     return cleaned

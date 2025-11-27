@@ -12,7 +12,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def run_rpc(embedding: list, top_k: int):
     """Execute vector similarity search via Supabase RPC."""
     response = supabase.rpc(
-        "match_faculty",
+        "match_faculty_chunks",   # <-- IMPORTANT FIX
         {
             "query_embedding": embedding,
             "match_count": top_k
