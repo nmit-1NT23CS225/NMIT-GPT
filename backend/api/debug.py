@@ -12,15 +12,14 @@ class RPCMatch(BaseModel):
 
 @router.post("/rpc/match")
 def debug_match(req: RPCMatch):
-    resp = supabase.rpc(
-        "match_faculty_chunks",   # ✔ CORRECT RPC NAME
-        {
-            "query_embedding": req.embedding,
-            "match_count": req.match_count
-        }
-    ).execute()
-
-    if resp.error:
-        raise HTTPException(status_code=500, detail=str(resp.error))
-    
-    return resp.data
+    try:
+        resp = supabase.rpc(
+            "match_faculty_chunks",
+            {
+                "query_embedding": req.embedding,
+                "match_count": req.match_count
+            }
+        ).execute()
+        return resp.data  # safe
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
