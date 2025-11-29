@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from RAG_ENGINE.src.db import get_supabase_client
 
 router = APIRouter(prefix="/debug", tags=["Debug"])
@@ -13,7 +13,7 @@ class RPCMatch(BaseModel):
 @router.post("/rpc/match")
 def debug_match(req: RPCMatch):
     resp = supabase.rpc(
-        "match_documents",
+        "match_faculty_chunks",   # ✔ CORRECT RPC NAME
         {
             "query_embedding": req.embedding,
             "match_count": req.match_count

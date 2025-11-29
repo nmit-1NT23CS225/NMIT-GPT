@@ -1,6 +1,7 @@
 from .embedder import embed_query
 from .db import run_rpc
 
+
 def retrieve_top_chunks(query: str, top_k: int = 5):
     """Retrieve the top-K relevant text chunks using vector similarity search."""
     query_emb = embed_query(query)
@@ -11,10 +12,15 @@ def retrieve_top_chunks(query: str, top_k: int = 5):
 
     cleaned = []
     for row in results:
+        content = row.get("chunk_text")
+        metadata = row.get("metadata") or {}
+        distance = row.get("distance")
+
         cleaned.append({
-            "content": row.get("chunk_text"),
-            "metadata": row.get("metadata"),
-            "similarity": row.get("distance")
+            "content": content,
+            "metadata": metadata,
+            
+            "similarity": distance,
         })
 
     return cleaned
