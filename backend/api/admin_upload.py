@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks
-from api.routes.auth import admin_required
+from backend.api.auth import admin_required
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
