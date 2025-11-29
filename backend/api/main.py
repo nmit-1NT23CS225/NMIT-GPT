@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes.ask import router as ask_router
-from api.routes.faculty import router as faculty_router
-from api.routes.embeddings import router as embeddings_router
-from api.routes.admin_upload import router as admin_upload_router
-from api.routes.debug import router as debug_router
-from api.routes.auth import router as auth_router
-from api.routes.health import router as health_router
+from backend.api.ask import router as ask_router
+from backend.api.faculty import router as faculty_router
+from backend.api.embeddings import router as embeddings_router
+from backend.api.admin_upload import router as admin_upload_router
+from backend.api.debug import router as debug_router
+from backend.api.auth import router as auth_router
+from backend.api.health import router as health_router
 
 app = FastAPI(title="Faculty-GPT API")
 
