@@ -1,23 +1,44 @@
-from pipeline.extract_text import extract_faculty_data
-from pipeline.load_to_db import insert_faculty
-from pipeline.chunk_and_embed import generate_chunk_embeddings
+from pipeline.extract_text import (
+    extract_faculty_from_excel,
+    extract_labs_from_excel
+)
+from pipeline.load_to_db import (
+    insert_faculty,
+    insert_labs,
+    fetch_faculty_ids
+)
+from pipeline.chunk_and_embed import (
+    embed_faculty,
+    embed_labs
+)
 
-FILE_PATH = r"Copy of faculty_template_full(1).xlsx"
+def get_next_faculty_number(existing_ids):
+    nums = [
+        int(fid.replace("FAC", ""))
+        for fid in existing_ids
+        if fid.startswith("FAC") and fid.replace("FAC", "").isdigit()
+    ]
+    return max(nums) + 1 if nums else 1
 
-def run_pipeline():
-    print("\nSTEP 1: Extracting data from Excel...")
-    faculty_list = extract_faculty_data(FILE_PATH)
-    print(f"Extracted {len(faculty_list)} faculty records.")
-
-    print("\nSTEP 2: Inserting faculty into Supabase...")
-    for faculty in faculty_list:
-        insert_faculty(faculty)
-    print("Faculty insert complete.")
-
-    print("\nSTEP 3: Generating raw_text + chunking + embeddings...")
-    generate_chunk_embeddings()
-
-    print("\nPipeline Completed Successfully!")
 
 if __name__ == "__main__":
-    run_pipeline()
+
+    faculty_rows = extract_faculty_from_excel("data/Faculty_updated.xlsx")
+    existing_ids = fetch_faculty_ids()
+    next_id = get_next_faculty_number(existing_ids)
+
+    for row in faculty_rows:
+        row["faculty_id"] = f"FAC{next_id}"
+        next_id += 1
+
+    insert_faculty(faculty_rows)
+    embed_faculty()
+
+
+    lab_rows = extract_labs_from_excel("data/Lab_infrastructure.xlsx")
+
+    for i, lab in enumerate(lab_rows, start=1):
+        lab["lab_id"] = f"LAB{i}"
+
+    insert_labs(lab_rows)
+    embed_labs()
