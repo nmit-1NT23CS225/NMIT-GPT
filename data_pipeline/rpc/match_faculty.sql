@@ -1,26 +1,26 @@
-create or replace function match_faculty_chunks (
+create function match_faculty_chunks (
     query_embedding vector(768),
     match_count int default 5
 )
 returns table (
     faculty_id text,
-    chunk_id int,
+    chunk_type text,
+    chunk_index int,
     chunk_text text,
-    distance float,
+    similarity float,
     metadata jsonb
 )
-language plpgsql
+language sql
 as $$
-begin
-    return query
     select
-        faculty_id,
-        chunk_id,
-        chunk_text,
-        embedding <-> query_embedding as distance,
+        source_id as faculty_id,
+        chunk_type,
+        chunk_index,
+        raw_text as chunk_text,
+        1 - (embedding <=> query_embedding) as similarity,
         metadata
-    from faculty_biodata_embeddings
-    order by embedding <-> query_embedding
+    from unified_embeddings
+    where source_type = 'faculty_biodata'
+    order by embedding <=> query_embedding
     limit match_count;
-end;
 $$;
