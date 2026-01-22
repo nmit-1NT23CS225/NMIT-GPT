@@ -1,7 +1,6 @@
-pandas
-openpyxl
-python-dotenv
-supabase
-sentence-transformers
-torch
-numpy
+pandas>=1.5
+python-dotenv>=1.0
+supabase>=2.0
+sentence-transformers>=2.2
+torch>=2.0
+openpyxl>=3.1
