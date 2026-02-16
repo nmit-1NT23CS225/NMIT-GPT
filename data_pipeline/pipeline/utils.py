@@ -68,3 +68,52 @@ def clean_lab_configuration(config_list):
     text = " ".join(text.split())
 
     return text.strip(), computer_count
+def extract_faculty_name_and_shortform(text):
+    if not text:
+        return None, None
+    match = re.search(r"\((.*?)\)", text)
+    shortform = match.group(1).strip() if match else None
+    name = re.sub(r"\(.*?\)", "", text).strip()
+    return name, shortform
+def normalize_name(name):
+    if not name:
+        return None
+    name = name.lower()
+    name = re.sub(r"[.\s]+", " ", name)  
+    return name.strip()
+import re
+
+def extract_subject_code(text):
+    if not text:
+        return None
+    m = re.search(r'\d{2}[A-Z]{2}[A-Z0-9]+', str(text))
+    return m.group(0) if m else None
+
+def is_lab(text):
+    return "lab" in str(text).lower()
+
+def get_activity(text):
+    if extract_subject_code(text):
+        return None
+    return str(text).strip()
+
+def parse_batches(text):
+    if not text:
+        return []
+
+    text = str(text).upper()
+    text = text.replace(" ", "")
+    text = text.replace("|", "/")
+    parts = text.split("/")
+    results = []
+    for part in parts:
+        if "-" not in part:
+            continue
+        batch, values = part.split("-", 1)
+        items = values.split("+")
+        for item in items:
+            if item:
+                results.append((batch.strip(), item.strip()))
+    return results
+
+
