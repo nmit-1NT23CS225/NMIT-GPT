@@ -42,3 +42,18 @@ if __name__ == "__main__":
 
     insert_labs(lab_rows)
     embed_labs()
+from pipeline.load_to_db import update_faculty_shortforms_from_subjects
+
+update_faculty_shortforms_from_subjects(r"data\Subjects_table.xlsx")
+
+
+from pipeline.extract_text import extract_subjects, extract_timetable
+from pipeline.load_to_db import insert_subjects, insert_timetable
+
+subjects = extract_subjects(r"data/Subjects_table.xlsx")
+insert_subjects(subjects)
+
+tt = extract_timetable(r"data/timetable.xlsx")
+insert_timetable(tt)
+
+print("Data Loaded Successfully ✅")
