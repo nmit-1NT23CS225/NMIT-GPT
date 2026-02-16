@@ -83,4 +83,68 @@ def extract_labs_from_excel(filepath):
         final_labs.append(lab)
 
     return final_labs
+from pipeline.utils import parse_batches
 
+def extract_subjects(filepath):
+
+    df = pd.read_excel(filepath)
+    df = df.ffill()
+    rows = []
+    for _, r in df.iterrows():
+        faculty_raw = str(r["Faculty Name"]).strip()
+        if "(" in faculty_raw and ")" in faculty_raw:
+            faculty_shortform = faculty_raw.split("(")[-1].replace(")", "").strip()
+        else:
+            faculty_shortform = faculty_raw.strip()
+
+        rows.append({
+            "subject_code": str(r["Subject Code"]).strip(),
+            "class": str(r["Class"]).strip(),
+            "subject_name": str(r["Subject Name"]).strip(),
+            "subject_initials": str(r["Initials"]).strip(),
+            "faculty_shortform": faculty_shortform.upper(),
+            "room": str(r["Classroom/Lab"]).strip()
+        })
+
+    return rows
+
+from pipeline.utils import extract_subject_code, is_lab, get_activity, parse_batches
+
+def extract_timetable(filepath):
+    import pandas as pd
+    df = pd.read_excel(filepath)
+    rows = []
+    for _, r in df.iterrows():
+        day = str(r.iloc[0]).strip()
+        class_name = str(r.iloc[1]).strip()
+        for col in df.columns[2:]:
+            value = r[col]
+            if pd.isna(value):
+                continue
+            value = str(value).strip()
+            subject = extract_subject_code(value)
+            if is_lab(value) and "-" in value:
+                for batch, fac in parse_batches(value):
+                    rows.append({
+                        "class": class_name,
+                        "day_of_week": day,
+                        "time_slot": col,
+                        "subject_code": subject,
+                        "activity": None,
+                        "is_lab": True,
+                        "batch": batch,
+                        "faculty_shortform": fac
+                    })
+            else:
+                rows.append({
+                    "class": class_name,
+                    "day_of_week": day,
+                    "time_slot": col,
+                    "subject_code": subject,
+                    "activity": get_activity(value),
+                    "is_lab": is_lab(value),
+                    "batch": None,
+                    "faculty_shortform": None
+                })
+
+    return rows
