@@ -1,5 +1,5 @@
-# FACULTY-GPT
-AI-powered RAG system for faculty knowledge
+# NMIT-GPT
+AI-powered RAG system for faculty and student knowledge
 
 **Tech Stack :**
 
