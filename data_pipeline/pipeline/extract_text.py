@@ -148,3 +148,47 @@ def extract_timetable(filepath):
                 })
 
     return rows
+from google import genai
+import json, os
+
+def extract_academic_calendar(pdf_path: str) -> list[dict]:
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    
+    uploaded_file = client.files.upload(
+        file=pdf_path,
+        config={"mime_type": "application/pdf", "display_name": "Academic Calendar"}
+    )
+    
+    prompt = """Extract ALL events from this academic calendar PDF.
+Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
+
+Each object must follow this exact structure:
+{
+  "event_date": "YYYY-MM-DD",
+  "event_name": "string",
+  "event_type": "holiday | exam | academic | co_curricular | registration | vacation",
+  "description": "string or null"
+}
+
+Rules:
+- Year is 2026 for Jan-Aug dates in this Even Semester calendar
+- Include all holidays, exams (MSE-1, MSE-2, SEE), co-curricular days,
+  compensatory working days, and important deadlines
+- event_type must be one of the 6 values listed above
+- if holiday and exam clashes mark it as holiday"""
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[uploaded_file, prompt]
+    )
+    
+    client.files.delete(name=uploaded_file.name)
+    return _parse_json(response.text)
+
+def _parse_json(raw: str) -> list[dict]:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw.strip())
