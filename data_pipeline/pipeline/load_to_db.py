@@ -268,4 +268,11 @@ def insert_timetable(rows):
 
     supabase.table("timetable").upsert(final_rows).execute()
 
+from supabase import create_client
+import os
+
+def load_calendar_to_supabase(events: list[dict]):
+    supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+    supabase.table("academic_calendar").insert(events).execute()
+    print(f"✓ Inserted {len(events)} events into Supabase")
 
