@@ -115,5 +115,20 @@ def parse_batches(text):
             if item:
                 results.append((batch.strip(), item.strip()))
     return results
+from dotenv import load_dotenv
 
+def load_env():
+    load_dotenv()
+    required = ["GEMINI_API_KEY", "SUPABASE_URL", "SUPABASE_KEY"]
+    for key in required:
+        if not os.getenv(key):
+            raise ValueError(f"Missing env variable: {key}")
+
+def clean_json_response(raw: str) -> str:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return raw.strip()
 
