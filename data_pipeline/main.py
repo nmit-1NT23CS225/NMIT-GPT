@@ -56,4 +56,14 @@ insert_subjects(subjects)
 tt = extract_timetable(r"data/timetable.xlsx")
 insert_timetable(tt)
 
+from pipeline.utils import load_env
+from pipeline.extract_text import extract_academic_calendar
+from pipeline.load_to_db import load_calendar_to_supabase
+
+load_env()
+events = extract_academic_calendar(r"data\academic_calendar.pdf")
+print(f"✓ Extracted {len(events)} events")
+
+load_calendar_to_supabase(events)
+print("Data Loaded Successfully ✅")
 print("Data Loaded Successfully ✅")
