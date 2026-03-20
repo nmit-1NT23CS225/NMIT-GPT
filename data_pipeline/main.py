@@ -66,4 +66,3 @@ print(f"✓ Extracted {len(events)} events")
 
 load_calendar_to_supabase(events)
 print("Data Loaded Successfully ✅")
-print("Data Loaded Successfully ✅")
