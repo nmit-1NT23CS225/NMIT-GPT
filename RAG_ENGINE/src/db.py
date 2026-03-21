@@ -13,12 +13,14 @@ def get_supabase_client():
 
 
 def run_rpc(embedding: list, top_k: int):
+    
     """Execute vector similarity search via Supabase RPC."""
     response = supabase.rpc(
-        "match_faculty_chunks",   # <-- IMPORTANT FIX
-        {
-            "query_embedding": embedding,
-            "match_count": top_k
-        }
+    "match_documents",
+    {
+        "filter_source": "faculty_biodata",  # 👈 ADD THIS
+        "match_count": top_k,
+        "query_embedding": embedding
+    }
     ).execute()
     return response.data
