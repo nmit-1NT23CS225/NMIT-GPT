@@ -87,3 +87,32 @@ def query_subjects(params: dict) -> list:
 
     result = query.execute()
     return result.data
+def query_calendar(params: dict) -> list:
+    supabase = get_supabase_client()
+
+    query = supabase.table("academic_calendar").select("*")
+
+    if params.get("date"):
+        query = query.eq("event_date", params["date"])
+
+    result = query.execute()
+    return result.data
+
+
+def format_calendar_chunks(data: list) -> list:
+    chunks = []
+    for row in data:
+        text = (
+            f"On {row.get('event_date')}, "
+            f"{row.get('event_name')} "
+            f"({row.get('event_type')})."
+        )
+        if row.get("description"):
+            text += f" {row.get('description')}"
+
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "calendar"},
+            "similarity": 1.0
+        })
+    return chunks

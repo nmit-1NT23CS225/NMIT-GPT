@@ -2,6 +2,7 @@ from .retriever import retrieve_top_chunks
 from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
 from .sql_queries import query_timetable, query_subjects
+from .sql_queries import query_timetable, query_subjects, query_calendar,format_calendar_chunks
 
 
 def build_prompt(user_query: str, chunks: list) -> str:
@@ -95,7 +96,9 @@ def answer_query(user_query: str, top_k: int = 5):
     elif intent == "subjects":
         raw_data = query_subjects(parsed)
         chunks = format_subject_chunks(raw_data)
-
+    elif intent == "calendar":
+        raw_data = query_calendar(parsed)
+        chunks = format_calendar_chunks(raw_data)
     else:
         chunks = retrieve_top_chunks(user_query, top_k)
 
