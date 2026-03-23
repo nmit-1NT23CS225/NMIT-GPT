@@ -18,7 +18,7 @@ def run_rpc(embedding: list, top_k: int):
     response = supabase.rpc(
     "match_documents",
     {
-        "filter_source": "faculty_biodata",  # 👈 ADD THIS
+        "filter_source":None,
         "match_count": top_k,
         "query_embedding": embedding
     }

@@ -1,5 +1,7 @@
 from .retriever import retrieve_top_chunks
 from .llm_interface import generate_llm_answer
+from .query_parser import parse_query
+from .sql_queries import query_timetable, query_subjects
 
 
 def build_prompt(user_query: str, chunks: list) -> str:
@@ -15,9 +17,7 @@ def build_prompt(user_query: str, chunks: list) -> str:
         if not content:
             continue
 
-        context_lines.append(
-            f"Faculty: {name}\nSubjects: {content}"
-        )
+        context_lines.append(content)
 
     context = "\n\n".join(context_lines)
     prompt = f"""
@@ -43,13 +43,62 @@ Instructions:
 """
     return prompt.strip()
 
+def format_timetable_chunks(data: list) -> list:
+    chunks = []
+    for row in data:
+        subject = row.get("subject_info") or {}
+        faculty = subject.get("faculty_biodata") or {}
+
+        text = (
+            f"On {row.get('day_of_week')}, "
+            f"class {row.get('class')} has "
+            f"{subject.get('subject_name', 'unknown subject')} "
+            f"during period {row.get('time_slot')}, "
+            f"taught by {faculty.get('name', 'unknown faculty')}."
+        )
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "timetable"},
+            "similarity": 1.0
+        })
+    return chunks
+def format_subject_chunks(data: list) -> list:
+    chunks = []
+    for row in data:
+        faculty = row.get("faculty_biodata") or {}
+        lab = row.get("lab_infrastructure") or {}
+
+        text = (
+            f"{row.get('subject_name')} (code: {row.get('subject_code')}) "
+            f"is taught to class {row.get('class')} "
+            f"by {faculty.get('name', 'unknown faculty')}."
+        )
+        if lab:
+            text += f" Lab: {lab.get('lab_name')} in room {lab.get('room_number')}."
+
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "subjects"},
+            "similarity": 1.0
+        })
+    return chunks
 
 def answer_query(user_query: str, top_k: int = 5):
-    """End-to-end RAG pipeline: embed → retrieve → filter → prompt → LLM answer."""
-    
-    chunks = retrieve_top_chunks(user_query, top_k)
+    parsed = parse_query(user_query)
+    print("PARSED:", parsed)
+    intent = parsed.get("intent", "general")
 
-    # Fallback: no relevant chunks found
+    if intent == "timetable":
+        raw_data = query_timetable(parsed)
+        chunks = format_timetable_chunks(raw_data)
+
+    elif intent == "subjects":
+        raw_data = query_subjects(parsed)
+        chunks = format_subject_chunks(raw_data)
+
+    else:
+        chunks = retrieve_top_chunks(user_query, top_k)
+
     if not chunks:
         return {
             "query": user_query,
@@ -57,29 +106,11 @@ def answer_query(user_query: str, top_k: int = 5):
             "chunks_used": [],
         }
 
-    # STEP 1: extract keywords (remove useless words)
-    stopwords = {"who", "teaches", "what", "is", "the", "does", "of", "in"}
-
-    keywords = [
-        word for word in user_query.lower().split()
-        if word not in stopwords
-    ]
-
-    # STEP 2: filter chunks
-    filtered_chunks = [
-        c for c in chunks
-        if any(k in c.get("content", "").lower() for k in keywords)
-    ]
-
-    # STEP 3: fallback if filtering removes everything
-    final_chunks = filtered_chunks if filtered_chunks else chunks
-
-    # STEP 4: build prompt
-    prompt = build_prompt(user_query, final_chunks)
-
+    prompt = build_prompt(user_query, chunks)
+    print("PROMPT:", prompt)
     answer = generate_llm_answer(prompt)
+    print("ANSWER:", answer)
 
-    # STEP 5: clean formatting
     answer = answer.replace("\n- ", ", ")
     answer = answer.replace("\n", " ")
     answer = " ".join(answer.split())
@@ -87,5 +118,5 @@ def answer_query(user_query: str, top_k: int = 5):
     return {
         "query": user_query,
         "answer": answer,
-        "chunks_used": final_chunks,  # 👈 important change
+        "chunks_used": chunks,
     }

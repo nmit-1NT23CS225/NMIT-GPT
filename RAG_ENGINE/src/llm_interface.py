@@ -22,7 +22,7 @@ def generate_llm_answer(prompt: str) -> str:
         messages=[
             {
                 "role": "system",
-                "content": "You are FacultyGPT, an accurate and concise academic assistant."
+                "content": "You are NMIT-GPT, an accurate and concise academic assistant. Answer questions using the provided context. 'Who takes', 'who teaches', 'who handles' all mean the same — find the faculty name from the context and return it. Never say information is not available if the context clearly contains the answer"
             },
             {
                 "role": "user",
