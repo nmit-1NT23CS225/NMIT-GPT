@@ -113,7 +113,7 @@ def format_subject_chunks(data: list) -> list:
 
 def answer_query(user_query: str, top_k: int = 5):
     parsed = parse_query(user_query)
-    print("PARSED:", parsed)
+    #print("PARSED:", parsed)
     intent = parsed.get("intent", "general")
 
     if intent == "timetable":
@@ -144,7 +144,7 @@ def answer_query(user_query: str, top_k: int = 5):
         }
 
     prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
-    print("PROMPT:", prompt)
+    #print("PROMPT:", prompt)
     answer = generate_llm_answer(prompt)
 
     answer = answer.replace("\n- ", ", ")
