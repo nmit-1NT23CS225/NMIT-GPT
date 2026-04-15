@@ -16,6 +16,9 @@ Extract structured parameters from the user's question and return ONLY a JSON ob
   "faculty_name": "Vijaya Shetty" | null,
   "lab_name": null | "lab name here"
   "date": "2026-04-01" | null
+  "department": "CSE" | "ECE" | "ISE" | null,
+  "designation": "HOD" | "Professor" | "Assistant Professor" | null,
+  "research_area": "machine learning" | "cloud computing" | null,
   
 }
 
@@ -28,6 +31,9 @@ Rules:
 - intent must be the single best match
 - If the question is about holidays, events, exams, dates → intent is "calendar"
 - Extract date as "date": "YYYY-MM-DD" format. April 1st → "2026-04-01"
+- If question is about a faculty member's profile, email, experience, research, achievements, subjects taught, qualifications → intent is "faculty"
+- If a department is mentioned (CSE, ECE, ISE etc.) and asking about people → intent is "faculty"
+- Strip honorifics from names: "Dr. Sharma" → "Sharma", "Prof. Vijaya" → "Vijaya"
 
 """
 def parse_query(user_query: str)->dict:
