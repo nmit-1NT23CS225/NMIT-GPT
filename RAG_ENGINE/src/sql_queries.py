@@ -1,5 +1,7 @@
 from .db import get_supabase_client
-
+import calendar as cal_module
+from collections import defaultdict
+import re
 TIME_SLOT_MAP = {
     # by period number
     "1": "09:00-09:55",
@@ -26,6 +28,32 @@ TIME_SLOT_MAP = {
     "3pm": "03:20-04:15",
     "3:20": "03:20-04:15",
 }
+EVENT_TYPE_MAP = {
+    "semester end": "exam",
+    "sem end": "exam",
+    "see": "exam",
+    "mid sem": "exam",
+    "midsem": "exam",
+    "mse": "exam",
+    "midterm": "exam",
+    "final exam": "exam",
+    "backlog": "registration",
+    "sem registration": "registration",
+    "compensatory": "compensatory working day",
+    "extra working": "compensatory working day",
+    "co_curricular": "co_curricular",
+    "fest": "co_curricular",
+    "cultural": "co_curricular",
+}
+def normalize_event_type(event_type: str) -> str:
+    if not event_type:
+        return None
+    lower = event_type.lower().strip()
+    for key, val in EVENT_TYPE_MAP.items():
+        if key in lower:
+            return val
+    return lower
+
 def query_timetable(params: dict) -> list:
     supabase = get_supabase_client()
 
@@ -87,32 +115,270 @@ def query_subjects(params: dict) -> list:
 
     result = query.execute()
     return result.data
+
 def query_calendar(params: dict) -> list:
     supabase = get_supabase_client()
 
     query = supabase.table("academic_calendar").select("*")
 
-    if params.get("date"):
-        query = query.eq("event_date", params["date"])
+    if params.get("event_name"):
+        query = query.ilike("event_name", f"%{params['event_name']}%")
 
-    result = query.execute()
-    return result.data
+    else:
+        if params.get("date"):
+            query = query.eq("event_date", params["date"])
+            # don't filter by event_type for specific date queries
+            # fetch everything on that date and let LLM reason
+
+        elif params.get("month"):
+            month = params["month"]
+            year, mon = month.split("-")
+            last_day = cal_module.monthrange(int(year), int(mon))[1]
+            query = query.gte("event_date", f"{month}-01").lte("event_date", f"{month}-{last_day:02d}")
+            # apply event_type filter only for month queries
+            if params.get("event_type"):
+                normalized = normalize_event_type(params["event_type"])
+                if normalized:
+                    query = query.ilike("event_type", f"%{normalized}%")
+
+        elif params.get("date_from") and params.get("date_to"):
+            query = query.gte("event_date", params["date_from"]).lte("event_date", params["date_to"])
+            if params.get("event_type"):
+                normalized = normalize_event_type(params["event_type"])
+                if normalized:
+                    query = query.ilike("event_type", f"%{normalized}%")
+
+    query = query.order("event_date", desc=False)
+    return query.execute().data
 
 
-def format_calendar_chunks(data: list) -> list:
+
+def format_calendar_chunks(data: list, params: dict = None) -> list:
+    if not data:
+        return []
+
     chunks = []
-    for row in data:
-        text = (
-            f"On {row.get('event_date')}, "
-            f"{row.get('event_name')} "
-            f"({row.get('event_type')})."
-        )
-        if row.get("description"):
-            text += f" {row.get('description')}"
+
+    # handle "is there college on X date?" queries
+    if params and params.get("is_college_open_query") and params.get("date"):
+        date = params["date"]
+        holidays = [r for r in data if "holiday" in r.get("event_type", "").lower()]
+        comp_days = [r for r in data if "compensatory" in r.get("event_type", "").lower()]
+
+        if holidays:
+            names = ", ".join(r.get("event_name", "") for r in holidays)
+            text = f"On {date}, college is CLOSED. It is a holiday: {names}."
+        elif comp_days:
+            names = ", ".join(r.get("event_name", "") for r in comp_days)
+            text = f"On {date}, college is OPEN. It is a compensatory working day: {names}."
+        else:
+            names = ", ".join(r.get("event_name", "") for r in data)
+            text = f"On {date}, there is an event: {names}. College schedule may vary."
 
         chunks.append({
             "content": text,
             "metadata": {"source_type": "calendar"},
+            "similarity": 1.0
+        })
+        return chunks
+
+    # normalize event names — group "SEE (Theory) Starts" with "SEE (Theory)" but keep "Ends" separate
+    def normalize_event_group(name: str) -> str:
+        cleaned = re.sub(r'\s*(Starts?)$', '', name, flags=re.IGNORECASE).strip()
+        return cleaned
+
+    # group by normalized event name
+    grouped = defaultdict(list)
+    for row in data:
+        key = normalize_event_group(row.get("event_name", "Unknown"))
+        grouped[key].append(row)
+
+    for event_name, rows in grouped.items():
+        rows_sorted = sorted(rows, key=lambda r: r.get("event_date", ""))
+        dates = [r.get("event_date") for r in rows_sorted]
+        event_type = rows_sorted[0].get("event_type", "")
+        description = rows_sorted[0].get("description", "")
+
+        # check original event names to detect start/end context
+        original_names = [r.get("event_name", "") for r in rows_sorted]
+        has_start = any(re.search(r'\bStarts?\b', n, re.IGNORECASE) for n in original_names)
+        has_end = any(re.search(r'\bEnds?\b', n, re.IGNORECASE) for n in original_names)
+
+        if len(dates) == 1:
+            if has_start:
+                text = f"'{event_name}' ({event_type}) starts on {dates[0]}."
+            elif has_end:
+                text = f"'{event_name}' ({event_type}) ends on {dates[0]}."
+            else:
+                text = f"'{event_name}' ({event_type}) is on {dates[0]}."
+        else:
+            text = f"'{event_name}' ({event_type}) starts on {dates[0]} and ends on {dates[-1]}."
+
+        if description:
+            text += f" Details: {description}."
+
+        if "holiday" in event_type.lower():
+            text += " College is CLOSED on these days."
+        elif "compensatory" in event_type.lower():
+            text += " College is OPEN on these days."
+        elif "exam" in event_type.lower():
+            text += " Exams are scheduled during this period."
+        elif "registration" in event_type.lower():
+            text += " Registration is scheduled during this period."
+
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "calendar"},
+            "similarity": 1.0
+        })
+
+    return chunks
+
+def query_faculty(params: dict) -> list:
+    """
+    Bulletproof faculty query — handles any twisted query about faculty_biodata.
+    Strategy:
+      1. Apply structured filters if params are present
+      2. If nothing found, fetch ALL faculty (LLM will extract from full context)
+    """
+    supabase = get_supabase_client()
+
+    query = supabase.table("faculty_biodata").select("""
+        faculty_id,
+        name,
+        designation,
+        department,
+        email,
+        joining_date,
+        past_experience,
+        educational_qualifications,
+        areas_of_interest,
+        achievements,
+        subjects_taught,
+        scholar_id,
+        orcid_id,
+        linkedin_id,
+        research,
+        faculty_shortform
+    """)
+
+    filters_applied = False
+
+    # Filter by name (fuzzy)
+    if params.get("faculty_name"):
+        name = params["faculty_name"].strip()
+        for honorific in ["dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ", "mrs.", "mrs "]:
+            name = name.lower().replace(honorific, "").strip()
+        query = query.ilike("name", f"%{name}%")
+        filters_applied = True
+
+    # SMART FILTERING: Department (CSE Scoped)
+    if params.get("department"):
+        dept = params["department"].lower()
+        if "cse" in dept or "cs" in dept:
+            dept_search = "computer"  
+        else:
+            dept_search = dept 
+        query = query.ilike("department", f"%{dept_search}%")
+        filters_applied = True
+
+    # SMART FILTERING: Designation (Handles HOD / Asst Prof)
+    if params.get("designation"):
+        desig = params["designation"].lower()
+        if "hod" in desig or "head" in desig:
+            desig_search = "head"  
+        elif "asst" in desig or "assistant" in desig:
+            desig_search = "assistant"
+        elif "prof" in desig:
+            desig_search = "professor"
+        else:
+            desig_search = desig
+        query = query.ilike("designation", f"%{desig_search}%")
+        filters_applied = True
+
+    # Filter by subject (array contains)
+    if params.get("subject"):
+        query = query.contains("subjects_taught", [params["subject"]])
+        filters_applied = True
+
+    # Filter by area of interest (array contains)
+    if params.get("research_area"):
+        query = query.contains("areas_of_interest", [params["research_area"]])
+        filters_applied = True
+
+    result = query.execute().data
+
+    # FALLBACK (with limit to prevent Groq crash)
+    if not result:
+        result = supabase.table("faculty_biodata").select("""
+            faculty_id,
+            name,
+            designation,
+            department,
+            email,
+            joining_date,
+            past_experience,
+            educational_qualifications,
+            areas_of_interest,
+            achievements,
+            subjects_taught,
+            scholar_id,
+            orcid_id,
+            linkedin_id,
+            research,
+            faculty_shortform
+        """).limit(5).execute().data
+
+    return result
+
+def format_faculty_chunks(data: list) -> list:
+    """Convert faculty_biodata rows into clean text chunks for the LLM."""
+    chunks = []
+    for f in data:
+        lines = []
+        if f.get("name"):
+            lines.append(f"Name: {f['name']}")
+        if f.get("faculty_shortform"):
+            lines.append(f"Short name / initials: {f['faculty_shortform']}")
+        if f.get("designation"):
+            lines.append(f"Designation: {f['designation']}")
+        if f.get("department"):  
+            lines.append(f"Department: {f['department']}")  
+        if f.get("email"):
+            lines.append(f"Email: {f['email']}")
+        if f.get("joining_date"):
+            lines.append(f"Joining Date: {f['joining_date']}")
+        if f.get("past_experience"):
+            lines.append(f"Past Experience: {f['past_experience']}")
+        if f.get("educational_qualifications"):
+            lines.append(f"Education: {f['educational_qualifications']}")
+        
+        # SMART LABELS to prevent LLM confusion
+        if f.get("areas_of_interest"):
+            lines.append(f"General Topics of Interest: {f['areas_of_interest']}")
+        if f.get("research"):
+            lines.append(f"Funded Research Projects & Grants: {f['research']}")
+            
+        if f.get("achievements"):
+            lines.append(f"Achievements: {f['achievements']}")
+        
+        if f.get("subjects_taught"):
+            subjects = f["subjects_taught"]
+            if isinstance(subjects, list):
+                subjects = ", ".join(subjects)
+            lines.append(f"Subjects Taught: {subjects}")
+            
+        if f.get("scholar_id"):
+            lines.append(f"Google Scholar ID: {f['scholar_id']}")
+        if f.get("orcid_id"):
+            lines.append(f"ORCID ID: {f['orcid_id']}")
+        if f.get("linkedin_id"):
+            lines.append(f"LinkedIn: {f['linkedin_id']}")
+
+        text = "\n".join(lines)
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "faculty_biodata", "name": f.get("name")},
             "similarity": 1.0
         })
     return chunks

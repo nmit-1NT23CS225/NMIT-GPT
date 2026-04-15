@@ -1,38 +1,64 @@
 from .retriever import retrieve_top_chunks
 from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
-from .sql_queries import query_timetable, query_subjects
-from .sql_queries import query_timetable, query_subjects, query_calendar,format_calendar_chunks
+from .sql_queries import (
+    query_timetable, query_subjects, query_calendar, query_faculty,
+    format_calendar_chunks, format_faculty_chunks
+)
 
-
-def build_prompt(user_query: str, chunks: list) -> str:
-    """Assemble context and question into a prompt for the LLM."""
-    
+def build_prompt(user_query: str, chunks: list, params: dict = None) -> str:
     context_lines = []
-    
     for c in chunks:
         content = c.get("content")
-        metadata = c.get("metadata", {})
-        name = metadata.get("name", "Unknown")
-
         if not content:
             continue
-
         context_lines.append(content)
 
+    # if no chunks, tell LLM the calendar has no entry for that date
+    if not context_lines and params and params.get("date"):
+        context_lines.append(f"The academic calendar has no recorded events for {params['date']}.")
+
     context = "\n\n".join(context_lines)
+
+    # --- SAFETY NET FOR GROQ TOKEN LIMITS ---
+    MAX_CHARS = 15000
+    if len(context) > MAX_CHARS:
+        context = context[:MAX_CHARS] + "\n...[Context Truncated for length]"
+    # ----------------------------------------
+
     prompt = f"""
-You are an academic assistant.
+You are an intelligent academic assistant for NMIT college students.
 
-Answer the question ONLY using the provided context.
+Use the context below to answer the student's question.
 
-Instructions:
-- Give a clear and concise answer
-- Do NOT explain your reasoning
-- Do NOT list unrelated information
-- Extract only relevant names or facts
-- If multiple people match, list them clearly
-- If answer is not found, say: "Information not available"
+How to format your answer for Faculty queries:
+1. Specific Questions (e.g., "Who is the HOD?", "What is Dr. Smith's email?"): Give a very short, direct answer.
+2. General Inquiries (e.g., "Tell me about the HOD of CSE"): Write a natural 2-3 sentence summary. Include their name, role, years of experience, and a brief mention of their interests or subjects taught. Do not list everything.
+3. Detailed Requests (e.g., "Tell me everything about...", "Give in detail..."): Provide a comprehensive, well-formatted profile using bullet points for their experience, research, achievements, and subjects.
+
+Rules for Calendar queries:
+- Read the context carefully and reason from it
+- "when does X start" → find the earliest date for X
+- "when does X end" → find the latest date for X
+- "when is X" → give the full date range
+- If the calendar has no events for a date → college is open as usual on that day
+- If it is a holiday → college is CLOSED
+- If it is a compensatory working day → college is OPEN
+- Convert YYYY-MM-DD dates to readable format like "May 13, 2026"
+- If multiple events match, list all of them
+- Be concise and direct
+- Dates are in YYYY-MM-DD format where MM is month and DD is day
+- 2026-02-06 means February 6, 2026 (month=02=February, day=06)
+- 2026-06-12 means June 12, 2026 (month=06=June, day=12)
+- Never swap month and day
+- Give only the direct answer, no assumptions, no extra sentences
+- Do not mention what might happen next or what other events might exist
+- List ALL events from the context, do not skip any
+- "X Ends" means the end date of event X — use that date as the answer for "when does X end"
+- "X Starts" means the start date of event X — use that date as the answer for "when does X start"
+- "Give the dates according to the date given in the context"
+
+If the answer is not found in the context, say: "Information not available."
 
 [Context]
 {context}
@@ -63,6 +89,7 @@ def format_timetable_chunks(data: list) -> list:
             "similarity": 1.0
         })
     return chunks
+
 def format_subject_chunks(data: list) -> list:
     chunks = []
     for row in data:
@@ -96,23 +123,29 @@ def answer_query(user_query: str, top_k: int = 5):
     elif intent == "subjects":
         raw_data = query_subjects(parsed)
         chunks = format_subject_chunks(raw_data)
+
     elif intent == "calendar":
-        raw_data = query_calendar(parsed)
-        chunks = format_calendar_chunks(raw_data)
+        raw_data = query_calendar(parsed)  
+        chunks = format_calendar_chunks(raw_data, params=parsed)
+        
+    elif intent == "faculty":
+        raw_data = query_faculty(parsed)
+        chunks = format_faculty_chunks(raw_data)
+
     else:
         chunks = retrieve_top_chunks(user_query, top_k)
 
-    if not chunks:
+    # only return early for non-calendar intents
+    if not chunks and intent != "calendar":
         return {
             "query": user_query,
             "answer": "No relevant information found in the knowledge base.",
             "chunks_used": [],
         }
 
-    prompt = build_prompt(user_query, chunks)
+    prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
     print("PROMPT:", prompt)
     answer = generate_llm_answer(prompt)
-    print("ANSWER:", answer)
 
     answer = answer.replace("\n- ", ", ")
     answer = answer.replace("\n", " ")
