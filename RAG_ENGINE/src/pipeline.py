@@ -58,6 +58,7 @@ Rules for Calendar queries:
 - "X Starts" means the start date of event X — use that date as the answer for "when does X start"
 - "Give the dates according to the date given in the context"
 
+
 If the answer is not found in the context, say: "Information not available."
 
 [Context]

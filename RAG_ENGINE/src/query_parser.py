@@ -74,7 +74,7 @@ event_type mapping:
 - "registration", "registrations", "backlog registration" → "registration"
 - "compensatory", "compensatory working day" → "compensatory working day"
 - "event", "fest", "function" → "event"
-- "fest", "cultural", "co curricular", "co-curricular", "anaadyanta" → "co_curricular"
+- "fest", "cultural", "co curricular", "co-curricular", "anaadyanta" → "co_curricular", 
 - For exam related → set event_name instead of event_type
 
 is_college_open_query:
