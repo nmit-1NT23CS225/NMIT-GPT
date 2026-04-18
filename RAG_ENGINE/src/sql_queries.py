@@ -234,12 +234,66 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
 
     return chunks
 
+
+
+def format_faculty_chunks(data: list, compact: bool = False) -> list:
+    """Convert faculty_biodata rows into clean text chunks for the LLM."""
+    chunks = []
+    for f in data:
+        if compact:
+            text = (
+                f"Name: {f.get('name')} | "
+                f"Designation: {f.get('designation')} | "
+                f"Department: {f.get('department')}"
+            )
+        else:
+            lines = []
+            if f.get("name"):
+                lines.append(f"Name: {f['name']}")
+            if f.get("faculty_shortform"):
+                lines.append(f"Short name / initials: {f['faculty_shortform']}")
+            if f.get("designation"):
+                lines.append(f"Designation: {f['designation']}")
+            if f.get("department"):
+                lines.append(f"Department: {f['department']}")
+            if f.get("email"):
+                lines.append(f"Email: {f['email']}")
+            if f.get("joining_date"):
+                lines.append(f"Joining Date: {f['joining_date']}")
+            if f.get("past_experience"):
+                lines.append(f"Past Experience: {f['past_experience']}")
+            if f.get("educational_qualifications"):
+                lines.append(f"Education: {f['educational_qualifications']}")
+            if f.get("areas_of_interest"):
+                lines.append(f"General Topics of Interest: {f['areas_of_interest']}")
+            if f.get("research"):
+                lines.append(f"Funded Research Projects & Grants: {f['research']}")
+            if f.get("achievements"):
+                lines.append(f"Achievements: {f['achievements']}")
+            if f.get("subjects_taught"):
+                subjects = f["subjects_taught"]
+                if isinstance(subjects, list):
+                    subjects = ", ".join(subjects)
+                lines.append(f"Subjects Taught: {subjects}")
+            if f.get("scholar_id"):
+                lines.append(f"Google Scholar ID: {f['scholar_id']}")
+            if f.get("orcid_id"):
+                lines.append(f"ORCID ID: {f['orcid_id']}")
+            if f.get("linkedin_id"):
+                lines.append(f"LinkedIn: {f['linkedin_id']}")
+
+            text = "\n".join(lines)
+
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "faculty_biodata", "name": f.get("name")},
+            "similarity": 1.0
+        })
+    return chunks
+
 def query_faculty(params: dict) -> list:
     """
     Bulletproof faculty query — handles any twisted query about faculty_biodata.
-    Strategy:
-      1. Apply structured filters if params are present
-      2. If nothing found, fetch ALL faculty (LLM will extract from full context)
     """
     supabase = get_supabase_client()
 
@@ -264,51 +318,66 @@ def query_faculty(params: dict) -> list:
 
     filters_applied = False
 
-    # Filter by name (fuzzy)
+    # Filter by name
     if params.get("faculty_name"):
-        name = params["faculty_name"].strip()
+        name = params["faculty_name"].strip().lower()
         for honorific in ["dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ", "mrs.", "mrs "]:
-            name = name.lower().replace(honorific, "").strip()
-        query = query.ilike("name", f"%{name}%")
-        filters_applied = True
+            name = name.replace(honorific, "").strip()
+        role_phrases = [
+            "hod of cse", "hod of ise", "hod of ece", "hod of cs",
+            "hod of eee", "hod of mech", "hod of civil",
+            "hod", "head of department", "head of dept",
+            "principal", "dean", "coordinator"
+        ]
+        for phrase in role_phrases:
+            name = name.replace(phrase, "").strip()
+        if name:
+            query = query.ilike("name", f"%{name}%")
+            filters_applied = True
 
-    # SMART FILTERING: Department (CSE Scoped)
+    # Filter by department
     if params.get("department"):
         dept = params["department"].lower()
         if "cse" in dept or "cs" in dept:
-            dept_search = "computer"  
+            dept_search = "computer"
         else:
-            dept_search = dept 
+            dept_search = dept
         query = query.ilike("department", f"%{dept_search}%")
         filters_applied = True
 
-    # SMART FILTERING: Designation (Handles HOD / Asst Prof)
+    # Filter by designation
     if params.get("designation"):
         desig = params["designation"].lower()
         if "hod" in desig or "head" in desig:
-            desig_search = "head"  
-        elif "asst" in desig or "assistant" in desig:
-            desig_search = "assistant"
+            desig_search = "head"
+        elif "assistant" in desig or "asst" in desig:
+            desig_search = "assistant professor"
+        elif "associate" in desig:
+            desig_search = "associate professor"
+        elif "adjunct" in desig:
+            desig_search = "adjunct"
         elif "prof" in desig:
             desig_search = "professor"
         else:
             desig_search = desig
         query = query.ilike("designation", f"%{desig_search}%")
         filters_applied = True
+        print("DESIGNATION FILTER USED:", desig_search)  # 👈 inside block
 
-    # Filter by subject (array contains)
+    # Filter by subject
     if params.get("subject"):
         query = query.contains("subjects_taught", [params["subject"]])
         filters_applied = True
 
-    # Filter by area of interest (array contains)
+    # Filter by research area
     if params.get("research_area"):
         query = query.contains("areas_of_interest", [params["research_area"]])
         filters_applied = True
 
     result = query.execute().data
+    print("RESULT COUNT:", len(result))
 
-    # FALLBACK (with limit to prevent Groq crash)
+    # FALLBACK
     if not result:
         result = supabase.table("faculty_biodata").select("""
             faculty_id,
@@ -330,55 +399,3 @@ def query_faculty(params: dict) -> list:
         """).limit(5).execute().data
 
     return result
-
-def format_faculty_chunks(data: list) -> list:
-    """Convert faculty_biodata rows into clean text chunks for the LLM."""
-    chunks = []
-    for f in data:
-        lines = []
-        if f.get("name"):
-            lines.append(f"Name: {f['name']}")
-        if f.get("faculty_shortform"):
-            lines.append(f"Short name / initials: {f['faculty_shortform']}")
-        if f.get("designation"):
-            lines.append(f"Designation: {f['designation']}")
-        if f.get("department"):  
-            lines.append(f"Department: {f['department']}")  
-        if f.get("email"):
-            lines.append(f"Email: {f['email']}")
-        if f.get("joining_date"):
-            lines.append(f"Joining Date: {f['joining_date']}")
-        if f.get("past_experience"):
-            lines.append(f"Past Experience: {f['past_experience']}")
-        if f.get("educational_qualifications"):
-            lines.append(f"Education: {f['educational_qualifications']}")
-        
-        # SMART LABELS to prevent LLM confusion
-        if f.get("areas_of_interest"):
-            lines.append(f"General Topics of Interest: {f['areas_of_interest']}")
-        if f.get("research"):
-            lines.append(f"Funded Research Projects & Grants: {f['research']}")
-            
-        if f.get("achievements"):
-            lines.append(f"Achievements: {f['achievements']}")
-        
-        if f.get("subjects_taught"):
-            subjects = f["subjects_taught"]
-            if isinstance(subjects, list):
-                subjects = ", ".join(subjects)
-            lines.append(f"Subjects Taught: {subjects}")
-            
-        if f.get("scholar_id"):
-            lines.append(f"Google Scholar ID: {f['scholar_id']}")
-        if f.get("orcid_id"):
-            lines.append(f"ORCID ID: {f['orcid_id']}")
-        if f.get("linkedin_id"):
-            lines.append(f"LinkedIn: {f['linkedin_id']}")
-
-        text = "\n".join(lines)
-        chunks.append({
-            "content": text,
-            "metadata": {"source_type": "faculty_biodata", "name": f.get("name")},
-            "similarity": 1.0
-        })
-    return chunks

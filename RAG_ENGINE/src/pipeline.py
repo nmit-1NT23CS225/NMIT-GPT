@@ -35,7 +35,8 @@ How to format your answer for Faculty queries:
 1. Specific Questions (e.g., "Who is the HOD?", "What is Dr. Smith's email?"): Give a very short, direct answer.
 2. General Inquiries (e.g., "Tell me about the HOD of CSE"): Write a natural 2-3 sentence summary. Include their name, role, years of experience, and a brief mention of their interests or subjects taught. Do not list everything.
 3. Detailed Requests (e.g., "Tell me everything about...", "Give in detail..."): Provide a comprehensive, well-formatted profile using bullet points for their experience, research, achievements, and subjects.
-
+4. Count Queries (e.g., "How many assistant professors?", "How many professors?", "How many HODs?"): Count ONLY the entries explicitly present in the context. Do NOT guess, assume, or add extras. The answer must match exactly the number of entries in the context.
+5. List Queries (e.g., "List all teachers", "List all associate professors"): List ONLY the names explicitly present in the context. Do NOT add any names that are not in the context. Do NOT repeat the same name twice.
 Rules for Calendar queries:
 - Read the context carefully and reason from it
 - "when does X start" → find the earliest date for X
@@ -57,6 +58,9 @@ Rules for Calendar queries:
 - "X Ends" means the end date of event X — use that date as the answer for "when does X end"
 - "X Starts" means the start date of event X — use that date as the answer for "when does X start"
 - "Give the dates according to the date given in the context"
+- For count queries: count ONLY the entries explicitly present in the context, do NOT guess or add extras
+- NEVER include names not present in the context
+
 
 
 If the answer is not found in the context, say: "Information not available."
@@ -114,7 +118,7 @@ def format_subject_chunks(data: list) -> list:
 
 def answer_query(user_query: str, top_k: int = 5):
     parsed = parse_query(user_query)
-    #print("PARSED:", parsed)
+    print("PARSED:", parsed)
     intent = parsed.get("intent", "general")
 
     if intent == "timetable":
@@ -130,8 +134,11 @@ def answer_query(user_query: str, top_k: int = 5):
         chunks = format_calendar_chunks(raw_data, params=parsed)
         
     elif intent == "faculty":
+        print("PARAMS SENT TO QUERY_FACULTY:", parsed)
         raw_data = query_faculty(parsed)
-        chunks = format_faculty_chunks(raw_data)
+        is_list_query = parsed.get("is_list_query", False)  # 👈 from parser
+        chunks = format_faculty_chunks(raw_data, compact=is_list_query)
+    
 
     else:
         chunks = retrieve_top_chunks(user_query, top_k)
@@ -143,7 +150,7 @@ def answer_query(user_query: str, top_k: int = 5):
             "answer": "No relevant information found in the knowledge base.",
             "chunks_used": [],
         }
-
+    print("CHUNKS COUNT:", len(chunks))
     prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
     #print("PROMPT:", prompt)
     answer = generate_llm_answer(prompt)

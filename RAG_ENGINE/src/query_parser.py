@@ -36,6 +36,7 @@ Extract structured parameters from the user's question and return ONLY a JSON ob
   "date_from": "2026-04-01" | null,
   "date_to": "2026-04-10" | null,
   "is_college_open_query": true | false
+  "is_list_query": true | false
 }
 
 Rules:
@@ -45,6 +46,14 @@ Rules:
 - class looks like 6A, 5B, 4C etc — extract exactly as mentioned
 - If a field is not mentioned, set it to null
 - intent must be the single best match
+- HOD = Head of Department → set designation as "head of department"
+- "who is hod of cse" → intent: faculty, designation: "head of department", department: "CSE", faculty_name: null
+- faculty_name should only contain actual person names, NOT role descriptions like "hod of cse"
+- faculty_name should only contain actual person names, NOT role descriptions like "hod of cse", "principal", "coordinator", "dean"
+- If user asks "list all teachers", "all faculty", "all professors", "list all" → set is_list_query: true
+- If asking about lab room, computers, configuration → intent is "lab"
+- If asking who teaches what subject to which class → intent is "subjects"
+- If asking about schedule, period, time slot → intent is "timetable"
 
 Intent Detection:
 - If the question is about holidays, events, exams, dates, college open/closed → intent is "calendar"
