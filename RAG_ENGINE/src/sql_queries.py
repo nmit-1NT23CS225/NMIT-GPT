@@ -235,7 +235,67 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
     return chunks
 
 
+def retrieve_chunks(params: dict) -> list:
+    """
+    Smart calendar retrieval — handles all calendar query types.
+    Wraps query_calendar + format_calendar_chunks with special logic
+    for gap, duration, overlap, and college open queries.
+    """
+    supabase = get_supabase_client()
+    query_type = params.get("query_type")
 
+    # GAP or OVERLAP between two events
+    if query_type in ("gap", "overlap") and params.get("event_name") and params.get("event_name_2"):
+        # fetch event 1
+        result1 = supabase.table("academic_calendar").select("*") \
+            .ilike("event_name", f"%{params['event_name']}%") \
+            .order("event_date", desc=False).execute().data
+
+        # fetch event 2
+        result2 = supabase.table("academic_calendar").select("*") \
+            .ilike("event_name", f"%{params['event_name_2']}%") \
+            .order("event_date", desc=False).execute().data
+
+        chunks = []
+
+        if result1:
+            dates1 = [r["event_date"] for r in result1]
+            chunks.append({
+                "content": f"'{params['event_name']}' runs from {dates1[0]} to {dates1[-1]}.",
+                "metadata": {"source_type": "calendar"},
+                "similarity": 1.0
+            })
+
+        if result2:
+            dates2 = [r["event_date"] for r in result2]
+            chunks.append({
+                "content": f"'{params['event_name_2']}' runs from {dates2[0]} to {dates2[-1]}.",
+                "metadata": {"source_type": "calendar"},
+                "similarity": 1.0
+            })
+
+        return chunks
+
+    # DURATION of a single event
+    if query_type == "duration" and params.get("event_name"):
+        result = supabase.table("academic_calendar").select("*") \
+            .ilike("event_name", f"%{params['event_name']}%") \
+            .order("event_date", desc=False).execute().data
+
+        if not result:
+            return []
+
+        dates = [r["event_date"] for r in result]
+        text = f"'{params['event_name']}' runs from {dates[0]} to {dates[-1]}, spanning {len(dates)} days."
+        return [{
+            "content": text,
+            "metadata": {"source_type": "calendar"},
+            "similarity": 1.0
+        }]
+
+    # DEFAULT — use existing query_calendar + format_calendar_chunks
+    data = query_calendar(params)
+    return format_calendar_chunks(data, params=params)
 def format_faculty_chunks(data: list, compact: bool = False) -> list:
     """Convert faculty_biodata rows into clean text chunks for the LLM."""
     chunks = []

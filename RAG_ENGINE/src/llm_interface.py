@@ -15,25 +15,34 @@ if not GROQ_API_KEY:
 client = Groq(api_key=GROQ_API_KEY)
 
 
-def generate_llm_answer(prompt: str) -> str:
+def generate_llm_answer(prompt: str, chat_history: list = None) -> str:
     """Generate the final answer using the configured LLaMA model on Groq."""
+    
+    from datetime import datetime
+    today = datetime.now().strftime("%A, %B %d, %Y")  # "Friday, April 18, 2026"
+
+    messages = [
+        {
+            "role": "system",
+            "content": f"""You are NMIT-GPT, an academic assistant for students of NMIT college.
+Your job is to answer questions about timetables, subjects, faculty, exams, and college calendar.
+Always reason carefully from the provided context.
+Today's date is {today}. Use this for queries like "today", "tomorrow", "this week".
+'Who takes', 'who teaches', 'who handles' all mean the same — find the faculty name from the context and return it.
+Never refuse to answer if the context contains relevant information.
+Maintain context from the conversation history — pronouns like "he", "she", "they", "her", "him" refer to people mentioned earlier in the conversation.
+Be concise and direct."""
+        }
+    ]
+
+    # inject chat history before current prompt
+    if chat_history:
+        messages.extend(chat_history)
+
+    messages.append({"role": "user", "content": prompt})
+
     response = client.chat.completions.create(
         model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": """You are NMIT-GPT, an academic assistant for students of NMIT college.
-                Your job is to answer questions about timetables, subjects, faculty, exams, and college calendar.
-                Always reason carefully from the provided context.
-                Convert YYYY-MM-DD dates to readable format like 'May 13, 2026'.
-                'Who takes', 'who teaches', 'who handles' all mean the same — find the faculty name from the context and return it.
-                Never refuse to answer if the context contains relevant information.
-                Be concise and direct."""
-            },
-            {
-                "role": "user",
-                "content": prompt
-            },
-        ],
+        messages=messages,
     )
     return response.choices[0].message.content

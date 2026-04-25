@@ -115,8 +115,7 @@ def format_subject_chunks(data: list) -> list:
             "similarity": 1.0
         })
     return chunks
-
-def answer_query(user_query: str, top_k: int = 5):
+def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> dict:
     parsed = parse_query(user_query)
     print("PARSED:", parsed)
     intent = parsed.get("intent", "general")
@@ -153,7 +152,7 @@ def answer_query(user_query: str, top_k: int = 5):
     print("CHUNKS COUNT:", len(chunks))
     prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
     #print("PROMPT:", prompt)
-    answer = generate_llm_answer(prompt)
+    answer = generate_llm_answer(prompt, chat_history=chat_history)
 
     answer = answer.replace("\n- ", ", ")
     answer = answer.replace("\n", " ")
