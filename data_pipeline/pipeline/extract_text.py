@@ -160,22 +160,25 @@ def extract_academic_calendar(pdf_path: str) -> list[dict]:
     )
     
     prompt = """Extract ALL events from this academic calendar PDF.
-Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
+    Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
 
-Each object must follow this exact structure:
-{
-  "event_date": "YYYY-MM-DD",
-  "event_name": "string",
-  "event_type": "holiday | exam | academic | co_curricular | registration | vacation",
-  "description": "string or null"
-}
+    Each object must follow this exact structure:
+    {
+    "event_date": "YYYY-MM-DD",
+    "event_name": "string",
+    "event_type": "holiday | exam | academic | co_curricular | registration | vacation",
+    "description": "string or null"
+    }
 
-Rules:
-- Year is 2026 for Jan-Aug dates in this Even Semester calendar
-- Include all holidays, exams (MSE-1, MSE-2, SEE), co-curricular days,
-  compensatory working days, and important deadlines
-- event_type must be one of the 6 values listed above
-- if holiday and exam clashes mark it as holiday"""
+    Rules:
+    - Year is 2026 for Jan-Aug dates in this Even Semester calendar
+    - Include all holidays, exams (MSE-1, MSE-2, SEE), co-curricular days,
+    compensatory working days, and important deadlines
+    - event_type must be one of the 6 values listed above
+    - if holiday and exam clashes mark it as holiday
+    - Extract all Sundays (column name: sun) from the academic calendar and store them as event_type "holiday"
+    """
+
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",

@@ -212,7 +212,18 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
             else:
                 text = f"'{event_name}' ({event_type}) is on {dates[0]}."
         else:
-            text = f"'{event_name}' ({event_type}) starts on {dates[0]} and ends on {dates[-1]}."
+    # For holidays with multiple dates → list each date individually
+            if "holiday" in event_type.lower():
+                for date in dates:
+                    individual_text = f"'{event_name}' ({event_type}) is on {date}. College is CLOSED on these days."
+                    chunks.append({
+                        "content": individual_text,
+                        "metadata": {"source_type": "calendar"},
+                        "similarity": 1.0
+                    })
+                continue  # skip the append at the bottom for this group
+            else:
+                text = f"'{event_name}' ({event_type}) starts on {dates[0]} and ends on {dates[-1]}."
 
         if description:
             text += f" Details: {description}."
@@ -235,67 +246,439 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
     return chunks
 
 
+from datetime import date, timedelta
+import re
+
+
 def retrieve_chunks(params: dict) -> list:
-    """
-    Smart calendar retrieval — handles all calendar query types.
-    Wraps query_calendar + format_calendar_chunks with special logic
-    for gap, duration, overlap, and college open queries.
-    """
-    supabase = get_supabase_client()
-    query_type = params.get("query_type")
+    supabase    = get_supabase_client()
+    query_type  = params.get("query_type")
+    event_name  = (params.get("event_name")  or "").strip()
+    event_name2 = (params.get("event_name_2") or "").strip()
 
-    # GAP or OVERLAP between two events
-    if query_type in ("gap", "overlap") and params.get("event_name") and params.get("event_name_2"):
-        # fetch event 1
-        result1 = supabase.table("academic_calendar").select("*") \
-            .ilike("event_name", f"%{params['event_name']}%") \
-            .order("event_date", desc=False).execute().data
+    # ─────────────────────────────────────────────────────────────────────────
+    # LOW-LEVEL HELPERS
+    # ─────────────────────────────────────────────────────────────────────────
 
-        # fetch event 2
-        result2 = supabase.table("academic_calendar").select("*") \
-            .ilike("event_name", f"%{params['event_name_2']}%") \
-            .order("event_date", desc=False).execute().data
+    def make_chunk(content: str) -> dict:
+        return {"content": content, "metadata": {"source_type": "calendar"}, "similarity": 1.0}
 
+    def iter_dates(start_str: str, end_str: str):
+        """Yield every date from start to end inclusive."""
+        cur = date.fromisoformat(start_str)
+        end = date.fromisoformat(end_str)
+        while cur <= end:
+            yield cur
+            cur += timedelta(days=1)
+
+    def fetch_all_rows() -> list:
+        return (
+            supabase.table("academic_calendar")
+            .select("*")
+            .order("event_date", desc=False)
+            .execute()
+            .data
+        )
+
+    def fetch_by_name(name: str) -> list:
+        return (
+            supabase.table("academic_calendar")
+            .select("*")
+            .ilike("event_name", f"%{name}%")
+            .order("event_date", desc=False)
+            .execute()
+            .data
+        )
+
+    def fetch_by_type(event_type: str, date_from: str = None, date_to: str = None) -> list:
+        q = supabase.table("academic_calendar").select("*").eq("event_type", event_type)
+        if date_from:
+            q = q.gte("event_date", date_from)
+        if date_to:
+            q = q.lte("event_date", date_to)
+        return q.order("event_date", desc=False).execute().data
+
+    def fetch_in_range(date_from: str, date_to: str) -> list:
+        return (
+            supabase.table("academic_calendar")
+            .select("*")
+            .gte("event_date", date_from)
+            .lte("event_date", date_to)
+            .order("event_date", desc=False)
+            .execute()
+            .data
+        )
+
+    def boundary_dates(rows: list) -> tuple:
+        """
+        Return (start_date, end_date) for a list of rows.
+        Prefers explicit 'Starts'/'Ends' marker rows; falls back to first/last date.
+        """
+        if not rows:
+            return None, None
+        start_rows = [r for r in rows if re.search(r"\bStarts?\b", r.get("event_name", ""), re.IGNORECASE)]
+        end_rows   = [r for r in rows if re.search(r"\bEnds?\b",   r.get("event_name", ""), re.IGNORECASE)]
+        start = start_rows[0]["event_date"] if start_rows else rows[0]["event_date"]
+        end   = end_rows[-1]["event_date"]  if end_rows   else rows[-1]["event_date"]
+        return start, end
+
+    def non_teaching_dates_in_range(date_from: str, date_to: str) -> set:
+        """
+        Return set of ISO date strings that are non-teaching within [date_from, date_to].
+        Excludes: holidays, co_curricular days, vacation, registration, exam days.
+        Does NOT include Sundays (handled separately via weekday check).
+        Does NOT exclude 'academic' rows (compensatory working days count as teaching).
+        """
+        rows = fetch_in_range(date_from, date_to)
+        return {
+    r["event_date"] for r in rows
+    if r["event_type"] in ("holiday", "exam", "vacation", "co_curricular")
+}
+
+    def count_working_days(start_str: str, end_str: str) -> int:
+        """
+        Count days in [start, end] that are NOT Sundays and NOT non-teaching days.
+        Non-teaching = holiday, co_curricular, vacation, registration, exam.
+        """
+        print(non_teaching_dates_in_range(start_str, end_str))
+        excluded = non_teaching_dates_in_range(start_str, end_str)
+        count = 0
+        for d in iter_dates(start_str, end_str):
+            if d.weekday() != 6 and d.isoformat() not in excluded:
+                count += 1
+        
+        return count
+    def count_exam_days(start_str: str, end_str: str) -> int:
+        """For exam duration: exclude Sundays and holidays only."""
+        rows = fetch_in_range(start_str, end_str)
+        holiday_dates = {
+            r["event_date"] for r in rows
+            if r["event_type"] == "holiday"
+        }
+        return sum(
+            1 for d in iter_dates(start_str, end_str)
+            if d.weekday() != 6 and d.isoformat() not in holiday_dates
+        )
+    def exam_actual_rows(rows: list) -> list:
+        """Remove Start/End marker rows — keep only actual exam day rows."""
+        return [
+            r for r in rows
+            if not re.search(r"\b(Starts?|Ends?)\b", r.get("event_name", ""), re.IGNORECASE)
+        ]
+
+    def infer_end_from_next_event(start_date: str, current_event_type: str = None) -> str:
+        """
+        Infer the end date of an event that has no 'Ends' marker.
+        Looks for the next event in the DB that is a DIFFERENT event (not same name/type),
+        and returns the day before it as the inferred end date.
+
+        For SEE Practicals (exam type): end = day before SEE Theory Starts.
+        For Summer Vacations (vacation type): end = day before next registration/academic event.
+        """
+        all_rows = fetch_all_rows()
+
+        # Find next event date strictly after start_date that signals end of this event.
+        # Priority: look for the next exam marker (Starts/Ends) or next non-holiday event.
+        later_rows = [r for r in all_rows if r["event_date"] > start_date]
+
+        if current_event_type == "exam":
+            # For exams: end = day before the next exam 'Starts' or 'Ends' marker
+            # that is NOT the same event
+            for r in later_rows:
+                if r["event_type"] == "exam" and re.search(r"\bStarts?\b", r.get("event_name", ""), re.IGNORECASE):
+                    return (date.fromisoformat(r["event_date"]) - timedelta(days=1)).isoformat()
+
+        if current_event_type == "vacation":
+            # For vacation: end = day before next registration or academic (non-holiday) event
+            skip_types = {"holiday"}
+            for r in later_rows:
+                if r["event_type"] not in skip_types:
+                    return (date.fromisoformat(r["event_date"]) - timedelta(days=1)).isoformat()
+
+        # Generic fallback: day before the next event of any type
+        later_dates = sorted({r["event_date"] for r in later_rows})
+        if not later_dates:
+            return start_date
+        return (date.fromisoformat(later_dates[0]) - timedelta(days=1)).isoformat()
+ # ─────────────────────────────────────────────────────────────────────────
+# SUMMER VACATION DURATION — special case
+# ─────────────────────────────────────────────────────────────────────────
+    if query_type == "duration" and event_name == "Summer Vacations":
+        vacation_rows = fetch_by_name("Summer Vacations")
+        reg_rows = fetch_by_name("Registration Odd (5th & 7th) Semester")
+
+        if not vacation_rows:
+            return [make_chunk("No data found for Summer Vacations.")]
+        if not reg_rows:
+            return [make_chunk("No data found for Odd Semester Registration.")]
+
+        start_date = vacation_rows[0]["event_date"]
+        end_date = (date.fromisoformat(reg_rows[0]["event_date"]) - timedelta(days=1)).isoformat()
+
+        start_d = date.fromisoformat(start_date)
+        end_d = date.fromisoformat(end_date)
+        duration = (end_d - start_d).days + 1
+
+        return [make_chunk(
+            f"Summer Vacations start on {start_date} and end on {end_date}, "
+            f"spanning {duration} days."
+        )]
+    # ─────────────────────────────────────────────────────────────────────────
+    # DURATION of a single event
+    # ─────────────────────────────────────────────────────────────────────────
+    if query_type == "duration" and event_name:
+        clean = re.sub(r"\s*(Starts?|Ends?)$", "", event_name, flags=re.IGNORECASE).strip()
+        rows  = fetch_by_name(clean)
+
+        if not rows:
+            return [make_chunk(f"No calendar data found for '{clean}'.")]
+
+        start_date, end_date = boundary_dates(rows)
+        actual_rows = exam_actual_rows(rows)
+
+        if actual_rows:
+            # MSE-style: one DB row per exam day — count directly
+            duration = len(actual_rows)
+            return [make_chunk(
+                f"'{clean}' runs from {start_date} to {end_date}, spanning {duration} days."
+            )]
+
+        # SEE-style: only Starts/Ends markers in DB → count working days in range
+        # Vacation-style: single row → infer end from next event, count calendar days
+        row_event_type = rows[0].get("event_type") if rows else None
+        is_vacation    = any(r.get("event_type") == "vacation" for r in rows)
+
+        if start_date == end_date:
+            # Single marker row — infer end date from next event
+            end_date = infer_end_from_next_event(start_date, current_event_type=row_event_type)
+
+        if is_vacation:
+            # Vacation: count all calendar days (including Sundays)
+            start_d  = date.fromisoformat(start_date)
+            end_d    = date.fromisoformat(end_date)
+            duration = (end_d - start_d).days + 1
+        elif row_event_type == "exam":
+            # Exams: count non-Sundays, exclude holidays but NOT exam rows
+            duration = count_exam_days(start_date, end_date)
+        else:
+            # SEE: count non-Sunday, non-holiday days
+            duration = count_working_days(start_date, end_date)
+
+        return [make_chunk(
+            f"'{clean}' runs from {start_date} to {end_date}, spanning {duration} days."
+        )]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DURATION_EACH — "how many days is MSE-1 and MSE-2?"
+    # ─────────────────────────────────────────────────────────────────────────
+    if query_type == "duration_each" and event_name and event_name2:
         chunks = []
-
-        if result1:
-            dates1 = [r["event_date"] for r in result1]
-            chunks.append({
-                "content": f"'{params['event_name']}' runs from {dates1[0]} to {dates1[-1]}.",
-                "metadata": {"source_type": "calendar"},
-                "similarity": 1.0
-            })
-
-        if result2:
-            dates2 = [r["event_date"] for r in result2]
-            chunks.append({
-                "content": f"'{params['event_name_2']}' runs from {dates2[0]} to {dates2[-1]}.",
-                "metadata": {"source_type": "calendar"},
-                "similarity": 1.0
-            })
-
+        for name in (event_name, event_name2):
+            clean = re.sub(r"\s*(Starts?|Ends?)$", "", name, flags=re.IGNORECASE).strip()
+            rows  = fetch_by_name(clean)
+            if not rows:
+                chunks.append(make_chunk(f"No data found for '{clean}'."))
+                continue
+            start_date, end_date = boundary_dates(rows)
+            actual_rows = exam_actual_rows(rows)
+            if actual_rows:
+                duration = len(actual_rows)
+            else:
+                row_event_type = rows[0].get("event_type") if rows else None
+                if start_date == end_date:
+                    end_date = infer_end_from_next_event(start_date, current_event_type=row_event_type)
+                is_vac = any(r.get("event_type") == "vacation" for r in rows)
+                if is_vac:
+                    duration = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days + 1
+                elif row_event_type == "exam":
+                    duration = count_exam_days(start_date, end_date)
+                else:
+                    duration = count_working_days(start_date, end_date)
+            chunks.append(make_chunk(
+                f"'{clean}' runs from {start_date} to {end_date}, spanning {duration} days."
+            ))
         return chunks
 
-    # DURATION of a single event
-    if query_type == "duration" and params.get("event_name"):
-        result = supabase.table("academic_calendar").select("*") \
-            .ilike("event_name", f"%{params['event_name']}%") \
-            .order("event_date", desc=False).execute().data
+    # ─────────────────────────────────────────────────────────────────────────
+    # GAP / OVERLAP between two events
+    # ─────────────────────────────────────────────────────────────────────────
+    if query_type in ("gap", "overlap") and event_name and event_name2:
+        rows1 = fetch_by_name(event_name)
+        rows2 = fetch_by_name(event_name2)
 
-        if not result:
-            return []
+        if not rows1:
+            return [make_chunk(f"No calendar data found for '{event_name}'. Cannot compute gap.")]
+        if not rows2:
+            return [make_chunk(f"No calendar data found for '{event_name2}'. Cannot compute gap.")]
 
-        dates = [r["event_date"] for r in result]
-        text = f"'{params['event_name']}' runs from {dates[0]} to {dates[-1]}, spanning {len(dates)} days."
-        return [{
-            "content": text,
-            "metadata": {"source_type": "calendar"},
-            "similarity": 1.0
-        }]
+        _,      end1   = boundary_dates(rows1)
+        start2, _      = boundary_dates(rows2)
 
-    # DEFAULT — use existing query_calendar + format_calendar_chunks
+        chunks = [
+            make_chunk(f"'{event_name}' ends on {end1}."),
+            make_chunk(f"'{event_name2}' starts on {start2}."),
+        ]
+
+        gap_start = (date.fromisoformat(end1) + timedelta(days=1)).isoformat()
+        gap_end   = (date.fromisoformat(start2) - timedelta(days=1)).isoformat()
+
+        if gap_start > gap_end:
+            chunks.append(make_chunk(
+                f"'{event_name}' and '{event_name2}' overlap or are back-to-back — gap is 0 days."
+            ))
+        else:
+            gap_days = count_working_days(gap_start, gap_end)
+            chunks.append(make_chunk(
+                f"The gap between '{event_name}' and '{event_name2}' is {gap_days} working days "
+                f"(excluding Sundays and holidays)."
+            ))
+        return chunks
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # COUNT queries — all derived from DB
+    # ─────────────────────────────────────────────────────────────────────────
+    if query_type == "count":
+        event_type_param = (params.get("event_type") or "").lower().strip()
+
+        # ── Teaching days ─────────────────────────────────────────────────────
+        # Teaching days = days from CoC to Last Working Day that are NOT
+        # holiday / exam / co_curricular / vacation / registration.
+        # 'academic' rows (CoC, Compensatory Working Days, Last Working Day)
+        # DO count as teaching days, so we do not exclude them.
+        if "teaching" in event_type_param:
+            coc_rows = fetch_by_name("Commencement of Classes")
+            lwd_rows = fetch_by_name("Last Working Day")
+
+            if not coc_rows or not lwd_rows:
+                return [make_chunk(
+                    "Cannot determine teaching days: 'Commencement of Classes' "
+                    "or 'Last Working Day' not found in the calendar."
+                )]
+
+            sem_start = coc_rows[0]["event_date"]
+            sem_end   = lwd_rows[-1]["event_date"]
+
+            all_in_range = fetch_in_range(sem_start, sem_end)
+            non_teaching_dates = {
+                r["event_date"] for r in all_in_range
+                if r["event_type"] in ("holiday", "exam", "vacation","co_curricular")
+            }
+
+            count = sum(
+                1 for d in iter_dates(sem_start, sem_end)
+                if d.isoformat() not in non_teaching_dates
+            )
+            return [make_chunk(
+                f"There are {count} teaching days in the even semester "
+                f"(from {sem_start} to {sem_end}, inclusive)."
+            )]
+
+        # ── Saturday holidays ────────────────────────────────────────────────
+        if "saturday" in event_type_param:
+            rows  = fetch_by_name("saturday")
+            count = len(rows)
+            dates = ", ".join(r["event_date"] for r in rows)
+            return [make_chunk(
+                f"There are {count} Saturday holidays: {dates}."
+            )]
+
+        # ── General / named holidays (non-Sunday, non-Saturday) ─────────────
+        if "general" in event_type_param:
+            all_holidays = fetch_by_type("holiday")
+            general = [
+                r for r in all_holidays
+                if not re.search(r"\b(sunday|saturday)\b", r.get("event_name", ""), re.IGNORECASE)
+            ]
+            count = len(general)
+            names = ", ".join(
+                f"{r['event_name']} ({r['event_date']})" for r in general
+            )
+            return [make_chunk(
+                f"There are {count} general/named holidays: {names}."
+            )]
+
+        # ── Link holidays ────────────────────────────────────────────────────
+        if "link" in event_type_param:
+            rows  = fetch_by_name("link holiday")
+            count = len(rows)
+            dates = ", ".join(
+                f"{r['event_name']} ({r['event_date']})" for r in rows
+            )
+            return [make_chunk(
+                f"There are {count} link holidays: {dates}."
+            )]
+
+        # ── Compensatory working days ─────────────────────────────────────────
+        if "compensatory" in event_type_param:
+            rows  = fetch_by_name("compensatory working day")
+            count = len(rows)
+            dates = ", ".join(
+                f"{r['event_name']} ({r['event_date']})" for r in rows
+            )
+            return [make_chunk(
+                f"There are {count} compensatory working days: {dates}."
+            )]
+
+        # ── Co-curricular days ───────────────────────────────────────────────
+        if "co_curricular" in event_type_param or "co curricular" in event_type_param:
+            rows  = fetch_by_type("co_curricular")
+            count = len(rows)
+            dates = ", ".join(
+                f"{r['event_name']} ({r['event_date']})" for r in rows
+            )
+            return [make_chunk(
+                f"There are {count} co-curricular activity days: {dates}."
+            )]
+        # ─────────────────────────────────────────────────────────────────────────
+    # COUNT HOLIDAYS IN A MONTH — count in Python, never let LLM count
+    # ─────────────────────────────────────────────────────────────────────────
+    if (params.get("month") and 
+        params.get("event_type") and 
+        "holiday" in params.get("event_type", "").lower() and
+        query_type == "count"):
+        
+        month = params["month"]
+        year, mon = month.split("-")
+        last_day = cal_module.monthrange(int(year), int(mon))[1]
+        
+        rows = (
+            supabase.table("academic_calendar")
+            .select("*")
+            .eq("event_type", "holiday")
+            .gte("event_date", f"{month}-01")
+            .lte("event_date", f"{month}-{last_day:02d}")
+            .order("event_date", desc=False)
+            .execute()
+            .data
+        )
+        
+        count = len(rows)
+        names = ", ".join(f"{r['event_name']} ({r['event_date']})" for r in rows)
+        month_name = date(int(year), int(mon), 1).strftime("%B %Y")
+        
+        return [make_chunk(
+            f"There are exactly {count} holidays in {month_name}: {names}."
+        )]
+   
+    # ─────────────────────────────────────────────────────────────────────────
+    # DEFAULT — delegate to existing query helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DEFAULT — delegate to existing query helpers
+    # ─────────────────────────────────────────────────────────────────────────
     data = query_calendar(params)
+    # In retrieve_chunks(), at the very bottom DEFAULT section:
+
+    # ← ADD THIS
+    if not data and params.get("is_college_open_query") and params.get("date"):
+        return [make_chunk(
+            f"There are no holidays or events recorded for {params['date']}. "
+            f"College is open as usual on this day."
+        )]
     return format_calendar_chunks(data, params=params)
+
+
 def format_faculty_chunks(data: list, compact: bool = False) -> list:
     """Convert faculty_biodata rows into clean text chunks for the LLM."""
     chunks = []

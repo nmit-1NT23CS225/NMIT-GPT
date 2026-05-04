@@ -36,14 +36,14 @@ OUTPUT SCHEMA
   "lab_name": "lab name" | null,
   "date": "YYYY-MM-DD" | null,
   "month": "YYYY-MM" | null,
-  "event_type": "holiday" | "registration" | "compensatory working day" | "co_curricular" | "academic" | null,
-  "event_name": "MSE-1" | "MSE-2" | "SEE" | "Anaadyanta" | null,
-  "event_name_2": "MSE-2" | null,
+  "event_type": "holiday" | "registration" | "compensatory working day" | "co_curricular" | "academic" | "teaching days" | "saturday holidays" | "general holidays" | "link holidays" | "compensatory working days" | null,
+  "event_name": "Mid-Semester Exam 1" | "Mid-Semester Exam 2" | "SEE (Theory)" | "SEE (Practicals)" | "Anaadyanta" | "Summer Vacations" | "Commencement of Classes" | null,
+  "event_name_2": "Mid-Semester Exam 2" | null,
   "date_from": "YYYY-MM-DD" | null,
   "date_to": "YYYY-MM-DD" | null,
   "is_college_open_query": true | false,
   "is_list_query": true | false,
-  "query_type": "gap" | "overlap" | "duration" | "count" | null
+  "query_type": "gap" | "overlap" | "duration" | "duration_each" | "count" | null
 }
 
 ═══════════════════════════════════════
@@ -136,67 +136,198 @@ CALENDAR RULES
 - "today" / "now" → today's date in YYYY-MM-DD
 - "tomorrow" → tomorrow's date in YYYY-MM-DD
 - "this week" → date_from: this Monday, date_to: this Friday
+- "when does sem start", "when does semester start", "when do classes start",
+  "when does sem X start", "start of semester", "sem start", "semester begins",
+  "classes begin", "college reopens", "when does 6th sem start"
+  → event_name: "Commencement of Classes", intent: "calendar"
+  - "when are co curricular activities", "list co curricular", 
+  "all co curricular", "co curricular dates", "show co curricular"
+  → is_list_query: true, event_type: "co_curricular"
+  When the user asks about "summer vacation duration" or "how long is summer vacation", 
+set:
+- query_type: "gap"
+- event_name: "Summer Vacations"
+- event_name_2: "Registration Odd (5th & 7th) Semester"
+═══════════════════════════════════════
+EVENT NAME MAPPING (match closest, handle typos)
+═══════════════════════════════════════
+- "mse 1", "mse1", "mid sem 1", "first midsem", "mse-1"   → "Mid-Semester Exam 1"
+- "mse 2", "mse2", "mid sem 2", "second midsem", "mse-2"  → "Mid-Semester Exam 2"
+- "mse", "mid sem", "midsem", "midterm" (no number)        → "MSE"
+- "see theory", "end sem theory", "see (theory)"           → "SEE (Theory)"
+- "see practicals", "see practical", "see (practicals)"    → "SEE (Practicals)"
+- "see", "end sem", "final exam" (no qualifier)            → "SEE (Theory)"
+- "anaadyanta", "anaadyantha", "anadyanta","fest","college fest"                 → "Anaadyanta"
+- "summer vacation", "summer vacations", "summer break"    → "Summer Vacations"
+- "classes start", "college reopens", "semester starts",
+  "start of sem", "start of semester", "coc"               → "Commencement of Classes"
+- "last working day", "lwd"                                → "Last Working Day"
 
-EVENT NAME MAPPING (match closest, handle typos):
-- "mse 1", "mse1", "mid sem 1", "first midsem" → "MSE-1"
-- "mse 2", "mse2", "mid sem 2", "second midsem" → "MSE-2"
-- "mse", "mid sem", "midsem", "midterm" (no number) → "MSE"
-- "see", "end sem", "semester end", "final exam" → "SEE"
-- "anaadyanta", "anaadyantha", "anadyanta" → "Anaadyanta"
-- "classes start", "college reopens", "semester starts" → "Commencement of Classes"
-- Match user query to closest name from KNOWN_EVENT_NAMES (handle spelling mistakes)
+EVENT NAME CLEANUP:
+- NEVER include "Starts" or "Ends" in event_name for any query_type
+- Always strip "Starts", "Ends", "Start", "End" from event_name
+  → "SEE (Theory) Ends"  → event_name: "SEE (Theory)"
+  → "SEE (Theory) Starts" → event_name: "SEE (Theory)"
 
-EVENT TYPE MAPPING:
-- "holiday", "no college", "off", "closed" → "holiday"
-- "registration", "backlog registration" → "registration"
-- "compensatory", "compensatory working day", "working saturday" → "compensatory working day"
-- "fest", "cultural", "co curricular", "co-curricular", "anaadyanta" → "co_curricular"
+═══════════════════════════════════════
+EVENT TYPE MAPPING
+═══════════════════════════════════════
+- "holiday", "no college", "off", "closed"                 → "holiday"
+- "registration", "backlog registration"                   → "registration"
+- "compensatory", "compensatory working day"               → "compensatory working days"
+- "working saturday"                                       → "compensatory working days"
+- "fest", "cultural", "co curricular", "co-curricular"    → "co_curricular"
+- "teaching days", "working days", "class days"            → "teaching days"
+- "saturday holiday", "saturday holidays"                  → "saturday holidays"
+- "general holiday", "general holidays", "named holiday"   → "general holidays"
+- "link holiday", "link holidays"                          → "link holidays"
 - For exam queries → use event_name field instead of event_type
 
-COLLEGE OPEN QUERY:
-- "is there college on X?", "do we have college?", "is college open?", "holiday or not?", "working day?" → true
-- everything else → false
+═══════════════════════════════════════
+COLLEGE OPEN QUERY
+═══════════════════════════════════════
+- "is there college on X?", "do we have college?", "is college open?",
+  "holiday or not?", "working day?"                        → is_college_open_query: true
+- everything else                                          → is_college_open_query: false
 
 ═══════════════════════════════════════
-MULTI-EVENT & SPECIAL QUERIES
+DURATION QUERIES
 ═══════════════════════════════════════
-- "gap between X and Y", "days between X and Y" →
-    event_name: X, event_name_2: Y, query_type: "gap"
-- "duration of X", "how long is X", "how many days is X" →
-    event_name: X, query_type: "duration"
-- "do X and Y overlap?" →
-    event_name: X, event_name_2: Y, query_type: "overlap"
-- "how many X" → query_type: "count"
+- "how many days is X", "how long is X", "duration of X"  → query_type: "duration"
+- If X is a named exam (MSE, SEE)                         → set event_name, do NOT set event_type
+- If X is a named vacation (summer vacations)             → set event_name: "Summer Vacations"
+- If X is a holiday type (not named)                      → set event_type: "holiday"
+- If X is a specific named holiday (e.g. "diwali")        → set event_name: "Diwali"
+
+DURATION_EACH — two events asked together:
+- "how many days is MSE-1 and MSE-2"
+  → query_type: "duration_each", event_name: "Mid-Semester Exam 1", event_name_2: "Mid-Semester Exam 2"
+- "MSE-1 & 2 how many days each"
+  → query_type: "duration_each", event_name: "Mid-Semester Exam 1", event_name_2: "Mid-Semester Exam 2"
+- "duration of SEE theory and practicals"
+  → query_type: "duration_each", event_name: "SEE (Theory)", event_name_2: "SEE (Practicals)"
+- Rule: whenever TWO named events appear in a single duration question → use "duration_each"
+When the user asks about "summer vacation duration" or "how long is summer vacation", 
+set:
+- query_type: "gap"
+- event_name: "Summer Vacations"
+- event_name_2: "Registration Odd (5th & 7th) Semester"
+═══════════════════════════════════════
+GAP QUERIES
+═══════════════════════════════════════
+- "gap between X and Y", "days between X and Y", "how many days between X and Y"
+  → query_type: "gap", event_name: X, event_name_2: Y
+- "do X and Y overlap"
+  → query_type: "overlap", event_name: X, event_name_2: Y
 
 ═══════════════════════════════════════
-LIST QUERY
+COUNT QUERIES
 ═══════════════════════════════════════
-- "list", "all", "show all", "what are all", "give all", "total", "how many", "count" → is_list_query: true
-- specific single-entity queries → is_list_query: false
+Use query_type: "count" for all of these. Set event_type accordingly:
+
+- "how many teaching days" / "total working days" / "how many class days"
+  → query_type: "count", event_type: "teaching days"
+
+- "how many saturday holidays" / "how many saturdays off"
+  → query_type: "count", event_type: "holiday"
+
+- "how many general holidays" / "how many named holidays" / "how many public holidays"
+  → query_type: "count", event_type: "holiday"
+
+- "how many link holidays"
+  → query_type: "count", event_type: "holiday"
+
+- "how many compensatory working days" / "how many compensatory days"
+  → query_type: "count", event_type: "academic"
+
+- "how many co curricular days" / "how many activity days"
+  → query_type: "count", event_type: "co_curricular"
+
+- "list", "all", "show all", "what are all", "give all" → is_list_query: true
+- specific single-entity queries                         → is_list_query: false
 
 ═══════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════
 "who takes 3rd period for 6A on monday"
-→ intent: timetable, class: 6A, day: Monday, period: 3
+→ {"intent":"timetable","class":"6A","day":"Monday","period":"3"}
 
 "who is hod of cse"
-→ intent: faculty, designation: head of department, department: CSE, faculty_name: null
+→ {"intent":"faculty","designation":"head of department","department":"CSE","faculty_name":null}
 
 "is there college on april 15"
-→ intent: calendar, date: 2026-04-15, is_college_open_query: true
+→ {"intent":"calendar","date":"2026-04-15","is_college_open_query":true}
 
 "who teaches DBMS to 6A"
-→ intent: subjects, subject: database management system, class: 6A
-
-"list all assistant professors"
-→ intent: faculty, designation: assistant professor, is_list_query: true
+→ {"intent":"subjects","subject":"database management system","class":"6A"}
 
 "gap between mse1 and mse2"
-→ intent: calendar, event_name: MSE-1, event_name_2: MSE-2, query_type: gap
+→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
+
+"how many days is MSE-1"
+→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","query_type":"duration"}
+
+"how many days is MSE-1 and MSE-2"
+→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"duration_each"}
+
+"how many days is SEE theory and practicals"
+→ {"intent":"calendar","event_name":"SEE (Theory)","event_name_2":"SEE (Practicals)","query_type":"duration_each"}
+
+"how long are summer vacations"
+→ {"intent":"calendar","event_name":"Summer Vacations","query_type":"duration"}
+
+"how many teaching days this semester"
+→ {"intent":"calendar","query_type":"count","event_type":"teaching days"}
+
+"how many saturday holidays"
+→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
+
+"how many general holidays"
+→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
+
+"how many link holidays"
+→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
+
+"how many compensatory working days"
+→ {"intent":"calendar","query_type":"count","event_type":"compensatory working days"}
+
+"gap between coc and mse1"
+→ {"intent":"calendar","event_name":"Commencement of Classes","event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
+
+"gap between mse2 and see practicals"
+→ {"intent":"calendar","event_name":"Mid-Semester Exam 2","event_name_2":"SEE (Practicals)","query_type":"gap"}
 
 "tell me about deepthi mam"
-→ intent: faculty, faculty_name: Deepthi
+→ {"intent":"faculty","faculty_name":"Deepthi"}
+
+"list all assistant professors"
+→ {"intent":"faculty","designation":"assistant professor","is_list_query":true}
+
+"how many days is the holiday in april"
+→ {"intent":"calendar","event_type":"holiday","month":"2026-04","query_type":"duration"}
+
+"is college open on may 1"
+→ {"intent":"calendar","date":"2026-05-01","is_college_open_query":true}
+
+"when does see theory start"
+→ {"intent":"calendar","event_name":"SEE (Theory)","query_type":null}
+
+"when does see theory end"
+→ {"intent":"calendar","event_name":"SEE (Theory)","query_type":null}
+"tell me number of days from start of sem to mse1"
+→ {"intent":"calendar","event_name":"Commencement of Classes",
+   "event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
+
+"how many days from coc to mse1"
+→ {"intent":"calendar","event_name":"Commencement of Classes",
+   "event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
+
+"days between sem start and mse2"
+→ {"intent":"calendar","event_name":"Commencement of Classes",
+   "event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
+
+"when does the sem end"
+-> {"intent":"calendar","event_name":"Last Working Day","query_type":"null"}
 """
 
 def parse_query(user_query: str) -> dict:

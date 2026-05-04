@@ -3,7 +3,7 @@ from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
 from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
-    format_calendar_chunks, format_faculty_chunks
+    format_calendar_chunks, format_faculty_chunks,retrieve_chunks
 )
 
 def build_prompt(user_query: str, chunks: list, params: dict = None) -> str:
@@ -38,6 +38,8 @@ How to format your answer for Faculty queries:
 4. Count Queries (e.g., "How many assistant professors?", "How many professors?", "How many HODs?"): Count ONLY the entries explicitly present in the context. Do NOT guess, assume, or add extras. The answer must match exactly the number of entries in the context.
 5. List Queries (e.g., "List all teachers", "List all associate professors"): List ONLY the names explicitly present in the context. Do NOT add any names that are not in the context. Do NOT repeat the same name twice.
 Rules for Calendar queries:
+-"college fest"-> Anaadyantha
+-"start of sem"->Commencement of classes
 - Read the context carefully and reason from it
 - "when does X start" → find the earliest date for X
 - "when does X end" → find the latest date for X
@@ -52,6 +54,12 @@ Rules for Calendar queries:
 - 2026-02-06 means February 6, 2026 (month=02=February, day=06)
 - 2026-06-12 means June 12, 2026 (month=06=June, day=12)
 - Never swap month and day
+- Any question asking "when does sem/semester/classes start" OR "when does sem [number] start" 
+  → This is asking for the date of 'Commencement of Classes'. 
+  → Find 'Commencement of Classes' in the context and return its date.
+  → Example answer: "January 19, 2026"
+- NEVER say "Information not available" if the context contains 'Commencement of Classes' 
+  and the question is about when semester/classes start.
 - Give only the direct answer, no assumptions, no extra sentences
 - Do not mention what might happen next or what other events might exist
 - List ALL events from the context, do not skip any
@@ -60,9 +68,37 @@ Rules for Calendar queries:
 - "Give the dates according to the date given in the context"
 - For count queries: count ONLY the entries explicitly present in the context, do NOT guess or add extras
 - NEVER include names not present in the context
-
-
-
+- "when does X end" → give ONLY the end date, nothing else
+  Example: "July 3, 2026"
+- "when does X start" → give ONLY the start date
+  Example: "June 12, 2026"
+- "when is X" → give the full date range
+  Example: "June 12, 2026 to July 3, 2026"
+- Never repeat the date twice in the same answer
+CRITICAL — NEVER DO YOUR OWN DATE MATH:
+- The context chunks already contain the EXACT pre-calculated answer from the database.
+- For gap queries: use the number from the chunk "The gap between X and Y is N working days."
+- For duration queries: use the number from the chunk "X spans N days."
+- NEVER subtract dates yourself. Raw date subtraction ignores Sundays, holidays, and
+  co-curricular days — it will always produce a wrong answer.
+- If the context says the gap is 40 days, your answer is exactly 40. Do not recompute.
+- If the context says an event spans 10 days, your answer is exactly 10. Do not recompute.
+- "number of days from X to Y" = gap (working days between them) — use the gap chunk value.
+- "how many days is X" = duration (days of the event itself) — use the duration chunk value.
+TEACHING DAYS = WORKING DAYS:
+- "working days", "teaching days", "class days", "college days" all mean the SAME thing.
+- If the context contains "There are X teaching days" → the answer is simply "X teaching days/working days".
+- NEVER calculate or subtract anything. NEVER say "let me calculate".
+- NEVER mention holidays, Sundays, or date ranges in the answer.
+- Just return the number directly.
+  Example: "There are 78 working days this semester."
+STRICT RULES (VERY IMPORTANT):
+- You MUST answer ONLY using the provided context.
+- NEVER use prior knowledge or assumptions.
+- NEVER guess missing dates or values.
+- If ANY required data is missing → respond EXACTLY:
+  "Information not available."
+- DO NOT attempt partial calculations if data is incomplete.
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
@@ -129,8 +165,7 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         chunks = format_subject_chunks(raw_data)
 
     elif intent == "calendar":
-        raw_data = query_calendar(parsed)  
-        chunks = format_calendar_chunks(raw_data, params=parsed)
+        chunks=retrieve_chunks(parsed)
         
     elif intent == "faculty":
         print("PARAMS SENT TO QUERY_FACULTY:", parsed)
