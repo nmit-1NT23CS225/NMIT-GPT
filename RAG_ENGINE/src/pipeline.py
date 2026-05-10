@@ -99,6 +99,21 @@ STRICT RULES (VERY IMPORTANT):
 - If ANY required data is missing → respond EXACTLY:
   "Information not available."
 - DO NOT attempt partial calculations if data is incomplete.
+- Never say "Information not available" if the context has any event data
+- "fest" specifically refers to the college cultural fest "Anaadyanta" only
+- co_curricular events are separate activities, not the fest
+- Only call something a fest if event_name is "Anaadyanta"
+
+**Rules for Timetable queries:
+- When showing a full day timetable, list ALL periods in time order
+- Format each period as: "Period <time>: <subject> by <faculty>"
+- Never skip any period
+- If asked for a specific day, only show that day's periods
+- Present as a numbered list when showing full day schedule
+
+
+
+
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
@@ -113,16 +128,30 @@ If the answer is not found in the context, say: "Information not available."
 
 def format_timetable_chunks(data: list) -> list:
     chunks = []
-    for row in data:
+
+    # sort by time slot so periods are in order
+    def time_sort_key(row):
+        slot = row.get("time_slot", "")
+        return slot  # "09:00-09:55" sorts correctly as string
+
+    sorted_data = sorted(data, key=time_sort_key)
+
+    for row in sorted_data:
         subject = row.get("subject_info") or {}
         faculty = subject.get("faculty_biodata") or {}
 
+        subject_name = subject.get("subject_name")
+        faculty_name = faculty.get("name")
+
+        # skip completely unknown rows
+        if not subject_name and not faculty_name:
+            continue
+
         text = (
-            f"On {row.get('day_of_week')}, "
-            f"class {row.get('class')} has "
-            f"{subject.get('subject_name', 'unknown subject')} "
-            f"during period {row.get('time_slot')}, "
-            f"taught by {faculty.get('name', 'unknown faculty')}."
+            f"Period {row.get('time_slot')}: "
+            f"{subject_name or 'unknown subject'} "
+            f"taught by {faculty_name or 'unknown faculty'} "
+            f"(Day: {row.get('day_of_week')}, Class: {row.get('class')})."
         )
         chunks.append({
             "content": text,
@@ -152,11 +181,39 @@ def format_subject_chunks(data: list) -> list:
         })
     return chunks
 def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> dict:
-    parsed = parse_query(user_query)
+    parsed = parse_query(user_query, chat_history=chat_history) 
     print("PARSED:", parsed)
     intent = parsed.get("intent", "general")
 
     if intent == "timetable":
+        cls = parsed.get("class")
+    
+    # only number given e.g. "6" → ask which section
+        if cls and cls.isdigit():
+            return {
+                "query": user_query,
+                "answer": f"Which section of {cls}? For example: {cls}A, {cls}B, {cls}C, or {cls}D?",
+                "chunks_used": []
+        }
+    
+    # only letter given e.g. "D" or "d section" → ask which semester
+        if cls and cls.isalpha() and len(cls) == 1:
+            return {
+                "query": user_query,
+                "answer": f"Which semester is section {cls.upper()}? For example: 4{cls.upper()}, 5{cls.upper()}, or 6{cls.upper()}?",
+                "chunks_used": []
+        }
+
+    # resolve tomorrow/date to day name
+        if parsed.get("date") and not parsed.get("day"):
+            from datetime import datetime
+            try:
+                dt = datetime.strptime(parsed["date"], "%Y-%m-%d")
+                parsed["day"] = dt.strftime("%A")
+                print("RESOLVED DAY FROM DATE:", parsed["day"])
+            except:
+                pass
+
         raw_data = query_timetable(parsed)
         chunks = format_timetable_chunks(raw_data)
 

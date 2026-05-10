@@ -1,7 +1,7 @@
 from .llm_interface import client, MODEL
 from .db import get_supabase_client
 import json
-
+PARSER_MODEL = "gemma2-9b-it" 
 # fetch once at startup, reuse for all queries
 def _load_event_names() -> list:
     try:
@@ -163,11 +163,24 @@ EVENT NAME MAPPING (match closest, handle typos)
   "start of sem", "start of semester", "coc"               → "Commencement of Classes"
 - "last working day", "lwd"                                → "Last Working Day"
 
+<<<<<<< Updated upstream
 EVENT NAME CLEANUP:
 - NEVER include "Starts" or "Ends" in event_name for any query_type
 - Always strip "Starts", "Ends", "Start", "End" from event_name
   → "SEE (Theory) Ends"  → event_name: "SEE (Theory)"
   → "SEE (Theory) Starts" → event_name: "SEE (Theory)"
+=======
+EVENT NAME MAPPING (match closest, handle typos):
+- "mse 1", "mse1", "mid sem 1", "first midsem" → "MSE-1"
+- "mse 2", "mse2", "mid sem 2", "second midsem" → "MSE-2"
+- "mse", "mid sem", "midsem", "midterm" (no number) → "MSE"
+- "see", "end sem", "semester end", "final exam" → "SEE"
+- "anaadyanta", "anaadyantha", "anadyanta" → "Anaadyanta"
+- "classes start", "college reopens", "semester starts" → "Commencement of Classes"
+- Match user query to closest name from KNOWN_EVENT_NAMES (handle spelling mistakes)
+- "fest", "college fest", "cultural fest" → event_name: "Anaadyanta"
+- co_curricular ≠ fest — they are separate calendar entries
+>>>>>>> Stashed changes
 
 ═══════════════════════════════════════
 EVENT TYPE MAPPING
@@ -219,6 +232,7 @@ GAP QUERIES
   → query_type: "gap", event_name: X, event_name_2: Y
 - "do X and Y overlap"
   → query_type: "overlap", event_name: X, event_name_2: Y
+
 
 ═══════════════════════════════════════
 COUNT QUERIES
@@ -329,13 +343,24 @@ EXAMPLES
 "when does the sem end"
 -> {"intent":"calendar","event_name":"Last Working Day","query_type":"null"}
 """
+def parse_query(user_query: str, chat_history: list = None) -> dict:
+    
+    # build context from last 2 exchanges if available
+    history_context = ""
+    if chat_history:
+        recent = chat_history[-4:]  # last 2 user+assistant pairs
+        for msg in recent:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            history_context += f"{role}: {msg['content']}\n"
 
-def parse_query(user_query: str) -> dict:
+    user_content = f"Recent conversation:\n{history_context}\nCurrent query: {user_query}" if history_context else user_query
+
     response = client.chat.completions.create(
-        model=MODEL,
+        model=PARSER_MODEL,
+        max_tokens=300,  # parser only needs small output
         messages=[
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Known calendar events: {KNOWN_EVENT_NAMES}\n\nUser query: {user_query}"}
+            {"role": "user", "content": user_content}
         ],
         temperature=0
     )

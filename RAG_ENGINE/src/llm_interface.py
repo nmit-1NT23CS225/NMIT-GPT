@@ -37,12 +37,14 @@ Be concise and direct."""
 
     # inject chat history before current prompt
     if chat_history:
+        chat_history = chat_history[-6:]
         messages.extend(chat_history)
 
     messages.append({"role": "user", "content": prompt})
 
     response = client.chat.completions.create(
         model=MODEL,
+        max_tokens=400,
         messages=messages,
     )
     return response.choices[0].message.content
