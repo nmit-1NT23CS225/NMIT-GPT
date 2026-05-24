@@ -85,7 +85,13 @@ CRITICAL — NEVER DO YOUR OWN DATE MATH:
 - If the context says an event spans 10 days, your answer is exactly 10. Do not recompute.
 - "number of days from X to Y" = gap (working days between them) — use the gap chunk value.
 - "how many days is X" = duration (days of the event itself) — use the duration chunk value.
+- ALWAYS convert dates from YYYY-MM-DD to readable format: "2026-05-13" → "May 13, 2026"
+- NEVER show dates in YYYY-MM-DD format in your answer
 TEACHING DAYS = WORKING DAYS:
+- For college open/working day queries: answer in ONE sentence only. "Yes, May 13 is a normal working day." or "No, May 13 is a holiday — [name]."
+- If query is ambiguous like "what do we have tomorrow", treat it as a calendar query and check for any events on that date
+- "what do we have on X", "what's on X", "anything on X" → intent: "calendar", date: X
+
 - "working days", "teaching days", "class days", "college days" all mean the SAME thing.
 - If the context contains "There are X teaching days" → the answer is simply "X teaching days/working days".
 - NEVER calculate or subtract anything. NEVER say "let me calculate".
@@ -180,33 +186,40 @@ def format_subject_chunks(data: list) -> list:
             "similarity": 1.0
         })
     return chunks
+import time
+from datetime import datetime
+
 def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> dict:
+    start = time.time()
+    
     parsed = parse_query(user_query, chat_history=chat_history) 
     print("PARSED:", parsed)
+    print(f"PARSE TIME: {time.time() - start:.2f}s")
+    
     intent = parsed.get("intent", "general")
+    t2 = time.time()
 
     if intent == "timetable":
         cls = parsed.get("class")
-    
-    # only number given e.g. "6" → ask which section
+
+        # only number given e.g. "6" → ask which section
         if cls and cls.isdigit():
             return {
                 "query": user_query,
                 "answer": f"Which section of {cls}? For example: {cls}A, {cls}B, {cls}C, or {cls}D?",
                 "chunks_used": []
-        }
-    
-    # only letter given e.g. "D" or "d section" → ask which semester
+            }
+
+        # only letter given e.g. "D" or "d section" → ask which semester
         if cls and cls.isalpha() and len(cls) == 1:
             return {
                 "query": user_query,
                 "answer": f"Which semester is section {cls.upper()}? For example: 4{cls.upper()}, 5{cls.upper()}, or 6{cls.upper()}?",
                 "chunks_used": []
-        }
+            }
 
-    # resolve tomorrow/date to day name
+        # resolve tomorrow/date to day name
         if parsed.get("date") and not parsed.get("day"):
-            from datetime import datetime
             try:
                 dt = datetime.strptime(parsed["date"], "%Y-%m-%d")
                 parsed["day"] = dt.strftime("%A")
@@ -222,17 +235,18 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         chunks = format_subject_chunks(raw_data)
 
     elif intent == "calendar":
-        chunks=retrieve_chunks(parsed)
-        
+        chunks = retrieve_chunks(parsed)
+
     elif intent == "faculty":
         print("PARAMS SENT TO QUERY_FACULTY:", parsed)
         raw_data = query_faculty(parsed)
-        is_list_query = parsed.get("is_list_query", False)  # 👈 from parser
+        is_list_query = parsed.get("is_list_query", False)
         chunks = format_faculty_chunks(raw_data, compact=is_list_query)
-    
 
     else:
         chunks = retrieve_top_chunks(user_query, top_k)
+
+    print(f"SQL TIME: {time.time() - t2:.2f}s")
 
     # only return early for non-calendar intents
     if not chunks and intent != "calendar":
@@ -241,14 +255,22 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
             "answer": "No relevant information found in the knowledge base.",
             "chunks_used": [],
         }
+
     print("CHUNKS COUNT:", len(chunks))
-    prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
-    #print("PROMPT:", prompt)
+    prompt = build_prompt(user_query, chunks, params=parsed)
+
+    t3 = time.time()
     answer = generate_llm_answer(prompt, chat_history=chat_history)
+    print(f"LLM TIME: {time.time() - t3:.2f}s")
+    print(f"TOTAL TIME: {time.time() - start:.2f}s")
+    import re
+    # fix numbers split across newlines e.g. "3\n8" → "38"
+    answer = re.sub(r'(\d)\n(\d)', r'\1\2', answer)
 
     answer = answer.replace("\n- ", ", ")
     answer = answer.replace("\n", " ")
     answer = " ".join(answer.split())
+    
 
     return {
         "query": user_query,

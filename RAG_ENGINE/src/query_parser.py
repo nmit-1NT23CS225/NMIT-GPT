@@ -1,7 +1,7 @@
 from .llm_interface import client, MODEL
 from .db import get_supabase_client
 import json
-PARSER_MODEL = "gemma2-9b-it" 
+PARSER_MODEL = "llama-3.1-8b-instant"
 # fetch once at startup, reuse for all queries
 def _load_event_names() -> list:
     try:
@@ -148,6 +148,7 @@ set:
 - query_type: "gap"
 - event_name: "Summer Vacations"
 - event_name_2: "Registration Odd (5th & 7th) Semester"
+- "college reopens after summer", "when does odd sem start", "when does next sem start" → event_name: "Registration Odd"
 ═══════════════════════════════════════
 EVENT NAME MAPPING (match closest, handle typos)
 ═══════════════════════════════════════
@@ -163,13 +164,11 @@ EVENT NAME MAPPING (match closest, handle typos)
   "start of sem", "start of semester", "coc"               → "Commencement of Classes"
 - "last working day", "lwd"                                → "Last Working Day"
 
-<<<<<<< Updated upstream
 EVENT NAME CLEANUP:
 - NEVER include "Starts" or "Ends" in event_name for any query_type
 - Always strip "Starts", "Ends", "Start", "End" from event_name
   → "SEE (Theory) Ends"  → event_name: "SEE (Theory)"
   → "SEE (Theory) Starts" → event_name: "SEE (Theory)"
-=======
 EVENT NAME MAPPING (match closest, handle typos):
 - "mse 1", "mse1", "mid sem 1", "first midsem" → "MSE-1"
 - "mse 2", "mse2", "mid sem 2", "second midsem" → "MSE-2"
@@ -180,7 +179,6 @@ EVENT NAME MAPPING (match closest, handle typos):
 - Match user query to closest name from KNOWN_EVENT_NAMES (handle spelling mistakes)
 - "fest", "college fest", "cultural fest" → event_name: "Anaadyanta"
 - co_curricular ≠ fest — they are separate calendar entries
->>>>>>> Stashed changes
 
 ═══════════════════════════════════════
 EVENT TYPE MAPPING
