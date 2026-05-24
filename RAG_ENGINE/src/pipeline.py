@@ -5,7 +5,10 @@ from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
     format_calendar_chunks, format_faculty_chunks,retrieve_chunks
 )
-
+# at top of pipeline.py
+import re
+import time
+from datetime import datetime
 def build_prompt(user_query: str, chunks: list, params: dict = None) -> str:
     context_lines = []
     for c in chunks:
@@ -117,7 +120,7 @@ STRICT RULES (VERY IMPORTANT):
 - If asked for a specific day, only show that day's periods
 - Present as a numbered list when showing full day schedule
 
-
+-For count queries: the answer is simply the NUMBER of entries in context. Just say "There are X assistant professors." Nothing else.
 
 
 If the answer is not found in the context, say: "Information not available."
@@ -186,8 +189,7 @@ def format_subject_chunks(data: list) -> list:
             "similarity": 1.0
         })
     return chunks
-import time
-from datetime import datetime
+
 
 def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> dict:
     start = time.time()
@@ -240,8 +242,18 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
     elif intent == "faculty":
         print("PARAMS SENT TO QUERY_FACULTY:", parsed)
         raw_data = query_faculty(parsed)
-        is_list_query = parsed.get("is_list_query", False)
-        chunks = format_faculty_chunks(raw_data, compact=is_list_query)
+        is_compact = parsed.get("is_list_query", False) or parsed.get("query_type") == "count"
+        chunks = format_faculty_chunks(raw_data, compact=is_compact)
+        if parsed.get("query_type") == "count":
+            exact_count = len(raw_data)
+            designation = parsed.get("designation", "faculty")
+            # fix grammar for singular
+            label = f"{designation}s" if exact_count != 1 else designation  
+            return {
+                "query": user_query,
+                "answer": f"There are {exact_count} {label} in the CSE department.",
+                "chunks_used": chunks,
+            }
 
     else:
         chunks = retrieve_top_chunks(user_query, top_k)

@@ -700,7 +700,10 @@ def format_faculty_chunks(data: list, compact: bool = False) -> list:
             if f.get("department"):
                 lines.append(f"Department: {f['department']}")
             if f.get("email"):
-                lines.append(f"Email: {f['email']}")
+                email = f["email"]
+                if isinstance(email, list):
+                    email = ", ".join(email)  # 👈 join both emails
+                lines.append(f"Email: {email}")
             if f.get("joining_date"):
                 lines.append(f"Joining Date: {f['joining_date']}")
             if f.get("past_experience"):
@@ -813,10 +816,11 @@ def query_faculty(params: dict) -> list:
         filters_applied = True
 
     # Filter by research area
+   # Filter by research area — ilike on text array
+    # Filter by research area — ilike on text array
     if params.get("research_area"):
-        query = query.contains("areas_of_interest", [params["research_area"]])
+        query = query.ilike("areas_of_interest", f"%{params['research_area']}%")
         filters_applied = True
-
     result = query.execute().data
     print("RESULT COUNT:", len(result))
 

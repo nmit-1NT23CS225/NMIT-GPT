@@ -19,9 +19,10 @@ class AskRequest(BaseModel):
 @router.post("/")
 def ask_question(payload: AskRequest):
     try:
-        # convert history to list of dicts for the LLM
         chat_history = [{"role": m.role, "content": m.content} for m in payload.history]
         result = answer_query(payload.question, chat_history=chat_history)
         return result
     except Exception as e:
+        import traceback
+        print("FULL ERROR:\n", traceback.format_exc())  # 👈 add this line only
         raise HTTPException(status_code=500, detail=str(e))
