@@ -34,6 +34,12 @@ OUTPUT SCHEMA
   "designation": "head of department" | "professor" | "assistant professor" | "associate professor" | "adjunct professor" | null,
   "research_area": "machine learning" | null,
   "lab_name": "lab name" | null,
+  "lab_query_type": "structured" | "detail" | null,
+  "is_lab_free_query": true | false,
+  "min_computers": 30 | null,
+  "max_computers": 50 | null,
+  "lab_keyword": "GPU" | "i7" | "HP" | "Dell" | null,
+  "lab_names": ["LAB3", "LAB4"] | null,
   "date": "YYYY-MM-DD" | null,
   "month": "YYYY-MM" | null,
   "event_type": "holiday" | "registration" | "compensatory working day" | "co_curricular" | "academic" | "teaching days" | "saturday holidays" | "general holidays" | "link holidays" | "compensatory working days" | null,
@@ -52,8 +58,12 @@ INTENT RULES (pick exactly one)
 - "timetable"  → schedule, period, class timing, who takes which period
 - "subjects"   → subject names, who teaches what subject, what does X teach
 - "faculty"    → faculty profile, email, research, achievements, department people, HOD, count of faculty
-- "lab"        → lab details, room number, computers, configuration, brand
+- "lab" → lab details, room number, computers, configuration, brand
+  - lab_query_type: "structured" → room number, how many computers, which lab is in which room
+  - lab_query_type: "detail"     → configuration, specs, software, brands, what is installed
+  - "is lab X free", "is lab X available", "lab X free at Y on Z" → intent: "lab", is_lab_free_query: true, lab_name: "LABX", day: "Tuesday", period: "2"
 - "calendar"   → holidays, events, exams, working days, dates, college open/closed
+
 - "general"    → anything else not fitting above
 
 ═══════════════════════════════════════
@@ -78,6 +88,7 @@ GT   → game theory
 PPL  → placement practice lab
 ARVR / VRAR → virtual reality augmented reality
 HPC  → high performance computing
+CNS  → cryptography and network security
 
 ═══════════════════════════════════════
 DAY & TIME NORMALIZATION
@@ -88,6 +99,10 @@ DAY & TIME NORMALIZATION
 - "2pm", "2 PM" → "2pm"
 - "morning class", "first class" → "1"
 - "last period", "last class" → "7"
+- "2:30", "2:30pm" → "2:30"
+- "3:30", "3:30pm" → "3:30"
+- "1:30", "1:30pm" → "1:30"
+- If no exact slot match, round to nearest period start time
 
 ═══════════════════════════════════════
 CLASS RULES
@@ -101,10 +116,21 @@ CLASS RULES
 SUBJECT RULES
 ═══════════════════════════════════════
 - Always expand abbreviations before setting subject field
+- CRITICAL: If the user mentions anything matching pattern like "22CS62", "22CS61A", "22CSE661", "22CSL68", "22CSG64" etc (starts with 2 digits + letters + digits) → set subject to that EXACT code, do NOT expand or interpret it into a subject name EVER
 - If a subject code is given like "22CS61A", "22CSE663", "22CSL68" → set subject = that code exactly
 - "who teaches X" → intent: "subjects", subject: expanded X
 - "what subjects does X teach" → intent: "subjects", faculty_name: X
 - "which faculty teaches X to class Y" → intent: "subjects", subject: X, class: Y
+- "6th sem", "6th semester", "sem 6", "semester 6", "sixth sem", "sixth semester" with intent "subjects" → set class to "6"
+- "subjects for 6th sem" or "subjects in 6th sem" → intent: "subjects", class: "6"
+- "6th sem a section", "6th sem section a" → class: "6A" , "6th sem b section", "6th sem section b" → class: "6B"
+- "how many subjects" → is_list_query: false, intent: "subjects"
+- Count queries about subjects should NOT set is_list_query to true
+- If the user mentions a subject code like "22CS61A", "22CS62", "22CSE661", "22CSL68" → set subject to that exact code as-is, do NOT expand or interpret it
+- "aiml lab", "ai ml lab", "aiml laboratory" → subject: "AI and ML Lab"
+- "AIML lab" → subject: "AI and ML Lab"
+- "for 6A and 6B", "for 6A & 6B" → set class to null, not a single class
+- When multiple classes are mentioned → set class to null so all classes are fetched
 
 ═══════════════════════════════════════
 FACULTY RULES
@@ -258,6 +284,23 @@ Use query_type: "count" for all of these. Set event_type accordingly:
 - "list", "all", "show all", "what are all", "give all" → is_list_query: true
 - specific single-entity queries                         → is_list_query: false
 
+"list all labs", "show all labs", "how many labs are there"
+→ {"intent":"lab","lab_query_type":"structured","lab_name":null,"is_list_query":true}
+
+═══════════════════════════════════════
+LAB RULES
+═══════════════════════════════════════
+- lab_query_type: "structured" → room number, how many computers, which room is lab X in
+- lab_query_type: "detail"     → configuration, specs, software, brands, what computers, 
+                                  what systems, what hardware, installed software
+- KEYWORDS that always mean detail: "configuration", "config", "specs", "brand", 
+  "what computers", "what systems", "installed", "software", "hardware"
+- KEYWORDS that always mean structured: "room number", "how many computers", "which room"
+- lab_name: always normalize to uppercase e.g. "lab 9" → "LAB9", "lab7" → "LAB7"
+- "labs with X systems", "which labs have X", "labs with X processors" → lab_query_type: "detail", lab_keyword: "X"
+- Extract X exactly as mentioned by user
+- If multiple labs are mentioned → set lab_names: ["LAB3", "LAB4"], lab_name: null
+- Single lab → lab_name: "LAB3", lab_names: null
 ═══════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════
@@ -340,6 +383,51 @@ EXAMPLES
 
 "when does the sem end"
 -> {"intent":"calendar","event_name":"Last Working Day","query_type":"null"}
+
+"which room is lab 9 in"
+→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"structured"}
+
+"what are the configurations of computers in lab 9"
+→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"detail"}
+
+"tell me about lab 7"
+→ {"intent":"lab","lab_name":"LAB7","lab_query_type":"detail"}
+
+"how many computers in lab 10"
+→ {"intent":"lab","lab_name":"LAB10","lab_query_type":"structured"}
+
+"what are the configurations of computers in lab 9"
+→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"detail"}
+
+"configuration of lab 7"
+→ {"intent":"lab","lab_name":"LAB7","lab_query_type":"detail"}
+
+"specs of computers in lab 10"
+→ {"intent":"lab","lab_name":"LAB10","lab_query_type":"detail"}
+
+"what brand of computers does lab 5 have"
+→ {"intent":"lab","lab_name":"LAB5","lab_query_type":"detail"}
+
+"is lab 9 free at 10am on tuesday"
+→ {"intent":"lab","lab_name":"LAB9","is_lab_free_query":true,"day":"Tuesday","period":"2","lab_query_type":null}
+
+"labs with more than 30 computers"
+→ {"intent":"lab","lab_query_type":"structured","min_computers":30,"lab_name":null}
+
+"labs with less than 30 computers"
+→ {"intent":"lab","lab_query_type":"structured","max_computers":30,"lab_name":null}
+
+"show labs with GPU systems"
+→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"GPU","lab_name":null}
+
+"labs with i7 processors"
+→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"i7","lab_name":null}
+
+"which labs have Dell computers"
+→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"Dell","lab_name":null}
+
+"is lab 3 and lab 4 free on wednesday at 11am"
+→ {"intent":"lab","is_lab_free_query":true,"lab_names":["LAB3","LAB4"],"lab_name":null,"day":"Wednesday","period":"3"}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

@@ -3,7 +3,7 @@ from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
 from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
-    format_calendar_chunks, format_faculty_chunks,retrieve_chunks
+    format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword
 )
 # at top of pipeline.py
 import re
@@ -101,6 +101,28 @@ TEACHING DAYS = WORKING DAYS:
 - NEVER mention holidays, Sundays, or date ranges in the answer.
 - Just return the number directly.
   Example: "There are 78 working days this semester."
+
+Rules for Lab queries:
+- ALWAYS answer from the context for lab queries — NEVER say "Information not available" if chunks are present
+- "configuration" → report Processor, Speed, RAM, HDD
+- "brands" → report system brands and counts  
+- "details" or "tell me about" → combine: room number, total computers, brands, and full configuration
+- The metadata field "lab_name" tells you which lab the chunk belongs to — use it
+- For lab availability queries (is lab X free/occupied):
+  ONLY output one sentence. No explanation, no time ranges, no reasoning.
+  If OCCUPIED: "No, [lab name] is not free on [day] at [time]. It is occupied by class [class] for [subject]."
+  If FREE: "Yes, [lab name] is free on [day] at [time]."
+  If asking "is it occupied": 
+    IF OCCUPIED: "Yes, [lab name] is occupied on [day] at [time] by class [class] for [subject]."
+    IF FREE:  "No, [lab name] is not occupied on [day] at [time]."
+  NEVER explain why. NEVER mention time ranges like 02:25-03:20. NEVER say "based on context". NEVER say "Information not available" if the context has OCCUPIED or FREE.
+- Always mention the lab name in your answer
+- For lab list queries: list ALL labs present in the context, do not skip any.NEVER omit any lab from the context. Count the chunks and list every single one.
+- For lab hardware/spec queries: ALWAYS mention the lab name first in your answer. Format: "[Lab Name]: [details]" for each lab.
+- For multiple lab availability queries: give one combined answer.
+  Example: "No, both Computer Lab-3 and Computer Lab-4 are occupied on Wednesday at 11 AM by class 6D for Placement Practice Lab."
+  If one is free and one is not: state each separately in one sentence each.
+  NEVER say "Yes" and "No" for the same query. NEVER contradict yourself.
 STRICT RULES (VERY IMPORTANT):
 - You MUST answer ONLY using the provided context.
 - NEVER use prior knowledge or assumptions.
@@ -123,6 +145,26 @@ STRICT RULES (VERY IMPORTANT):
 -For count queries: the answer is simply the NUMBER of entries in context. Just say "There are X assistant professors." Nothing else.
 
 
+
+Rules for Subject queries:
+- "how many subjects" with no specific class → count the total number of UNIQUE subject names in the context
+- NEVER count per class or per section — count unique subject names only once 
+- ALWAYS count your listed items before writing the number
+- The answer should be the count first, then list all unique subject names
+- Example: "There are 12 subjects in 6th semester: 1. Operating System concepts 2. Cryptography and Network Security ..."
+- "how many subjects" or "list all subjects" → count the items in your own answer list and report that number
+- NEVER state a count number yourself — always count your listed items and use that number
+- The count must ALWAYS match the number of items in your list
+- Before writing "There are X subjects", count the items in your list first and then write the count
+- Do not group by class when answering count queries about subjects
+- "what subjects does X teach" or "which subjects does X take" → list ALL subject names present in the context, do NOT filter or skip any
+- The context already contains ONLY the subjects taught by that faculty — trust the context completely, list everything in it
+- NEVER say a subject is not taught by the faculty if it appears in the context
+- "what subjects does X teach" → list ALL subject names in context, trust context completely, never skip any
+- "Is the same faculty teaching X?" → if all chunks show same faculty name → "Yes, [name] teaches [subject] for all classes", if different → "No" and list each class with faculty
+- "who teaches X for 6A and 6B" → list faculty for each class separately
+- Example: "Dr. X teaches CNS for 6A, Dr. Y teaches CNS for 6B"
+- "does X teach any lab?" → scan each chunk's subject name for the word "Lab" — if NONE contain "Lab" → answer "No, [faculty name] does not teach any lab subject" — NEVER say Yes unless a chunk explicitly has "Lab" in the subject name
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
@@ -236,6 +278,11 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         raw_data = query_subjects(parsed)
         chunks = format_subject_chunks(raw_data)
 
+        if "any lab" in user_query.lower():
+            chunks = [c for c in chunks if "lab" in c["content"].lower().split("(code:")[0]]
+            if not chunks:
+                return {"query": user_query, "answer": f"No, {parsed.get('faculty_name', 'this faculty')} does not teach any lab.", "chunks_used": []}
+
     elif intent == "calendar":
         chunks = retrieve_chunks(parsed)
 
@@ -254,6 +301,49 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
                 "answer": f"There are {exact_count} {label} in the CSE department.",
                 "chunks_used": chunks,
             }
+        
+    elif intent == "lab":
+        lab_query_type = parsed.get("lab_query_type")
+        is_lab_free = parsed.get("is_lab_free_query", False)
+
+        if is_lab_free:
+            lab_names = parsed.get("lab_names")
+            if lab_names:
+                chunks = []
+                for lab in lab_names:
+                    parsed_copy = {**parsed, "lab_name": lab}
+                    chunks.extend(query_lab_availability(parsed_copy))
+            else:
+                chunks = query_lab_availability(parsed)
+        elif lab_query_type == "detail":
+            if parsed.get("lab_keyword"):
+                chunks = query_lab_by_keyword(parsed["lab_keyword"])
+            else:
+                chunks = query_lab_embeddings(parsed)
+            if not chunks:
+                chunks = retrieve_top_chunks(user_query, top_k)
+        else:
+            raw_data = query_lab(parsed)
+            if parsed.get("is_list_query") and not parsed.get("min_computers") and not parsed.get("max_computers"):
+                chunks = [
+                    {
+                        "content": f"{row.get('lab_name')} — Room {row.get('room_number')}",
+                        "metadata": {},
+                        "similarity": 1.0
+                    }
+                    for row in raw_data
+                ]
+            elif parsed.get("min_computers") or parsed.get("max_computers"):
+                chunks = [
+                    {
+                        "content": f"{row.get('lab_name')} — Room {row.get('room_number')} — {row.get('no_of_computers')} computers",
+                        "metadata": {},
+                        "similarity": 1.0
+                    }
+                    for row in raw_data
+                ]
+            else:
+                chunks = format_lab_chunks(raw_data)
 
     else:
         chunks = retrieve_top_chunks(user_query, top_k)
