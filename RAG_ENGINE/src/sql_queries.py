@@ -108,12 +108,42 @@ def query_subjects(params: dict) -> list:
         """)
 
     if params.get("subject"):
-        query = query.ilike("subject_name", f"%{params['subject']}%")
+        subject = params["subject"]
+        # Check if it looks like a subject code (contains digits)
+        if any(char.isdigit() for char in subject):
+            query = query.ilike("subject_code", f"%{subject}%")
+        else:
+            query = query.ilike("subject_name", f"%{subject}%")
 
     if params.get("class"):
-        query = query.eq("class", params["class"])
+        if params["class"] == "6":
+            query = query.like("class", "6%")
+        else:
+            query = query.eq("class", params["class"])
+
+    # if params.get("class") == "6":
+    #     query = query.like("class", "6%")
+    if params.get("faculty_name"):
+        supabase2 = get_supabase_client()
+        faculty_rows = supabase2.table("faculty_biodata") \
+            .select("faculty_id") \
+            .ilike("name", f"%{params['faculty_name']}%") \
+            .execute().data
+        if faculty_rows:
+            faculty_ids = [r["faculty_id"] for r in faculty_rows]
+            query = query.in_("faculty_id", faculty_ids)
 
     result = query.execute()
+    if not params.get("subject") and not params.get("faculty_name"):
+        if not params.get("class") or params.get("class") == "6":
+            seen = set()
+            deduped = []
+            for row in result.data:
+                if row["subject_name"] not in seen:
+                    seen.add(row["subject_name"])
+                    deduped.append(row)
+            return deduped
+    
     return result.data
 
 def query_calendar(params: dict) -> list:

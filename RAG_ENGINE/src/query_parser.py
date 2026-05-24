@@ -78,6 +78,7 @@ GT   → game theory
 PPL  → placement practice lab
 ARVR / VRAR → virtual reality augmented reality
 HPC  → high performance computing
+CNS  → cryptography and network security
 
 ═══════════════════════════════════════
 DAY & TIME NORMALIZATION
@@ -101,10 +102,21 @@ CLASS RULES
 SUBJECT RULES
 ═══════════════════════════════════════
 - Always expand abbreviations before setting subject field
+- CRITICAL: If the user mentions anything matching pattern like "22CS62", "22CS61A", "22CSE661", "22CSL68", "22CSG64" etc (starts with 2 digits + letters + digits) → set subject to that EXACT code, do NOT expand or interpret it into a subject name EVER
 - If a subject code is given like "22CS61A", "22CSE663", "22CSL68" → set subject = that code exactly
 - "who teaches X" → intent: "subjects", subject: expanded X
 - "what subjects does X teach" → intent: "subjects", faculty_name: X
 - "which faculty teaches X to class Y" → intent: "subjects", subject: X, class: Y
+- "6th sem", "6th semester", "sem 6", "semester 6", "sixth sem", "sixth semester" with intent "subjects" → set class to "6"
+- "subjects for 6th sem" or "subjects in 6th sem" → intent: "subjects", class: "6"
+- "6th sem a section", "6th sem section a" → class: "6A" , "6th sem b section", "6th sem section b" → class: "6B"
+- "how many subjects" → is_list_query: false, intent: "subjects"
+- Count queries about subjects should NOT set is_list_query to true
+- If the user mentions a subject code like "22CS61A", "22CS62", "22CSE661", "22CSL68" → set subject to that exact code as-is, do NOT expand or interpret it
+- "aiml lab", "ai ml lab", "aiml laboratory" → subject: "AI and ML Lab"
+- "AIML lab" → subject: "AI and ML Lab"
+- "for 6A and 6B", "for 6A & 6B" → set class to null, not a single class
+- When multiple classes are mentioned → set class to null so all classes are fetched
 
 ═══════════════════════════════════════
 FACULTY RULES

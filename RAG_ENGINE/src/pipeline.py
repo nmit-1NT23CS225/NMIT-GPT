@@ -99,6 +99,26 @@ STRICT RULES (VERY IMPORTANT):
 - If ANY required data is missing → respond EXACTLY:
   "Information not available."
 - DO NOT attempt partial calculations if data is incomplete.
+
+Rules for Subject queries:
+- "how many subjects" with no specific class → count the total number of UNIQUE subject names in the context
+- NEVER count per class or per section — count unique subject names only once 
+- ALWAYS count your listed items before writing the number
+- The answer should be the count first, then list all unique subject names
+- Example: "There are 12 subjects in 6th semester: 1. Operating System concepts 2. Cryptography and Network Security ..."
+- "how many subjects" or "list all subjects" → count the items in your own answer list and report that number
+- NEVER state a count number yourself — always count your listed items and use that number
+- The count must ALWAYS match the number of items in your list
+- Before writing "There are X subjects", count the items in your list first and then write the count
+- Do not group by class when answering count queries about subjects
+- "what subjects does X teach" or "which subjects does X take" → list ALL subject names present in the context, do NOT filter or skip any
+- The context already contains ONLY the subjects taught by that faculty — trust the context completely, list everything in it
+- NEVER say a subject is not taught by the faculty if it appears in the context
+- "what subjects does X teach" → list ALL subject names in context, trust context completely, never skip any
+- "Is the same faculty teaching X?" → if all chunks show same faculty name → "Yes, [name] teaches [subject] for all classes", if different → "No" and list each class with faculty
+- "who teaches X for 6A and 6B" → list faculty for each class separately
+- Example: "Dr. X teaches CNS for 6A, Dr. Y teaches CNS for 6B"
+- "does X teach any lab?" → scan each chunk's subject name for the word "Lab" — if NONE contain "Lab" → answer "No, [faculty name] does not teach any lab subject" — NEVER say Yes unless a chunk explicitly has "Lab" in the subject name
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
@@ -164,6 +184,11 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         raw_data = query_subjects(parsed)
         chunks = format_subject_chunks(raw_data)
 
+        if "any lab" in user_query.lower():
+            chunks = [c for c in chunks if "lab" in c["content"].lower().split("(code:")[0]]
+            if not chunks:
+                return {"query": user_query, "answer": f"No, {parsed.get('faculty_name', 'this faculty')} does not teach any lab.", "chunks_used": []}
+
     elif intent == "calendar":
         chunks=retrieve_chunks(parsed)
         
@@ -185,6 +210,8 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
             "chunks_used": [],
         }
     print("CHUNKS COUNT:", len(chunks))
+    # for c in chunks:
+    #     print("CHUNK:", c["content"])
     prompt = build_prompt(user_query, chunks, params=parsed)  # pass parsed here
     #print("PROMPT:", prompt)
     answer = generate_llm_answer(prompt, chat_history=chat_history)
