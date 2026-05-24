@@ -806,20 +806,31 @@ def query_faculty(params: dict) -> list:
     # Filter by name
     if params.get("faculty_name"):
         name = params["faculty_name"].strip().lower()
-        for honorific in ["dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ", "mrs.", "mrs "]:
-            name = name.replace(honorific, "").strip()
-        role_phrases = [
-            "hod of cse", "hod of ise", "hod of ece", "hod of cs",
-            "hod of eee", "hod of mech", "hod of civil",
-            "hod", "head of department", "head of dept",
-            "principal", "dean", "coordinator"
-        ]
-        for phrase in role_phrases:
-            name = name.replace(phrase, "").strip()
-        if name:
-            query = query.ilike("name", f"%{name}%")
-            filters_applied = True
-
+    
+    # strip honorifics and titles from both start and end
+    strips = [
+        # honorifics prefix
+        "dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ",
+        "mrs.", "mrs ", "sri ", "shri ",
+        # honorifics suffix / casual address
+        "sir", "mam", "ma'am", "madam", "miss",
+        # designations that might sneak in
+        "professor", "associate professor", "assistant professor",
+        "adjunct professor", "hod", "head", "principal", "dean",
+        "coordinator", "lecturer", "faculty", "teacher", "mentor",
+        # adjectives
+        "respected", "dear", "our", "the",
+    ]
+    
+    for s in strips:
+        name = name.replace(s, "").strip()
+    
+    # remove extra spaces
+    name = " ".join(name.split())
+    
+    if name:
+        query = query.ilike("name", f"%{name}%")
+        filters_applied = True
     # Filter by department
     if params.get("department"):
         dept = params["department"].lower()

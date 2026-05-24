@@ -38,6 +38,10 @@ Be concise and direct."""
     # inject chat history before current prompt
     if chat_history:
         chat_history = chat_history[-4:]
+        chat_history = [
+            {"role": m["role"], "content": m["content"][:500]}
+            for m in chat_history
+        ]
         messages.extend(chat_history)
 
     messages.append({"role": "user", "content": prompt})

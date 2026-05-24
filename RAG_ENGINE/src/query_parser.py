@@ -14,436 +14,100 @@ def _load_event_names() -> list:
 KNOWN_EVENT_NAMES = _load_event_names()
 
 PARSE_SYSTEM_PROMPT = """
-You are an intelligent query parser for NMIT college's information system.
-
-Your job is to DEEPLY understand what the user is asking — including typos, abbreviations, slang, and casual phrasing — and extract ALL necessary parameters.
-
-Return ONLY a valid JSON object. No explanation, no markdown, no extra text.
-
-═══════════════════════════════════════
-OUTPUT SCHEMA
-═══════════════════════════════════════
-{
-  "intent": "timetable" | "subjects" | "faculty" | "lab" | "calendar" | "general",
-  "class": "6A" | "5B" | null,
-  "day": "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | null,
-  "period": "1" | "2" | "3" | "9:00" | "10:05" | "11:00" | "10am" | "2pm" | null,
-  "subject": "database management system" | null,
-  "faculty_name": "actual person name only" | null,
-  "department": "CSE" | "ECE" | "ISE" | "MECH" | "EEE" | "CIVIL" | null,
-  "designation": "head of department" | "professor" | "assistant professor" | "associate professor" | "adjunct professor" | null,
-  "research_area": "machine learning" | null,
-  "lab_name": "lab name" | null,
-  "lab_query_type": "structured" | "detail" | null,
-  "is_lab_free_query": true | false,
-  "min_computers": 30 | null,
-  "max_computers": 50 | null,
-  "lab_keyword": "GPU" | "i7" | "HP" | "Dell" | null,
-  "lab_names": ["LAB3", "LAB4"] | null,
-  "date": "YYYY-MM-DD" | null,
-  "month": "YYYY-MM" | null,
-  "event_type": "holiday" | "registration" | "compensatory working day" | "co_curricular" | "academic" | "teaching days" | "saturday holidays" | "general holidays" | "link holidays" | "compensatory working days" | null,
-  "event_name": "Mid-Semester Exam 1" | "Mid-Semester Exam 2" | "SEE (Theory)" | "SEE (Practicals)" | "Anaadyanta" | "Summer Vacations" | "Commencement of Classes" | null,
-  "event_name_2": "Mid-Semester Exam 2" | null,
-  "date_from": "YYYY-MM-DD" | null,
-  "date_to": "YYYY-MM-DD" | null,
-  "is_college_open_query": true | false,
-  "is_list_query": true | false,
-  "query_type": "gap" | "overlap" | "duration" | "duration_each" | "count" | null
-}
-
-═══════════════════════════════════════
-INTENT RULES (pick exactly one)
-═══════════════════════════════════════
-- "timetable"  → schedule, period, class timing, who takes which period
-- "subjects"   → subject names, who teaches what subject, what does X teach
-- "faculty"    → faculty profile, email, research, achievements, department people, HOD, count of faculty
-- "lab" → lab details, room number, computers, configuration, brand
-  - lab_query_type: "structured" → room number, how many computers, which lab is in which room
-  - lab_query_type: "detail"     → configuration, specs, software, brands, what is installed
-  - "is lab X free", "is lab X available", "lab X free at Y on Z" → intent: "lab", is_lab_free_query: true, lab_name: "LABX", day: "Tuesday", period: "2"
-- "calendar"   → holidays, events, exams, working days, dates, college open/closed
-
-- "general"    → anything else not fitting above
-
-═══════════════════════════════════════
-SUBJECT ABBREVIATIONS (always expand)
-═══════════════════════════════════════
-DBMS → database management system
-OS   → operating system
-CN   → computer networks
-DS   → data structures
-DAA  → design and analysis of algorithms
-OOP / OOPS → object oriented programming
-SE   → software engineering
-CD   → compiler design
-TOC  → theory of computation
-AI   → artificial intelligence
-ML   → machine learning
-DM   → data mining
-BDT  → big data technologies
-ASD  → agile software development
-ACA  → advanced computer architecture
-GT   → game theory
-PPL  → placement practice lab
-ARVR / VRAR → virtual reality augmented reality
-HPC  → high performance computing
-CNS  → cryptography and network security
-
-═══════════════════════════════════════
-DAY & TIME NORMALIZATION
-═══════════════════════════════════════
-- mon/monday → Monday, tue → Tuesday, wed → Wednesday, thu → Thursday, fri → Friday
-- "1st period", "first" → "1", "2nd" → "2", "3rd" → "3", "4th" → "4" etc.
-- "10:05AM", "10:05am" → "10:05"
-- "2pm", "2 PM" → "2pm"
-- "morning class", "first class" → "1"
-- "last period", "last class" → "7"
-- "2:30", "2:30pm" → "2:30"
-- "3:30", "3:30pm" → "3:30"
-- "1:30", "1:30pm" → "1:30"
-- If no exact slot match, round to nearest period start time
-
-═══════════════════════════════════════
-CLASS RULES
-═══════════════════════════════════════
-- class must match pattern like 6A, 5B, 4C, 7D etc.
-- "6th sem", "semester 6", "sem 6", "6th semester" → class = null (semester ≠ class section)
-- If only a number like "6" is given → class = null
-- Extract class ONLY if both number and letter are present (e.g. "6A", "5 B")
-
-═══════════════════════════════════════
-SUBJECT RULES
-═══════════════════════════════════════
-- Always expand abbreviations before setting subject field
-- CRITICAL: If the user mentions anything matching pattern like "22CS62", "22CS61A", "22CSE661", "22CSL68", "22CSG64" etc (starts with 2 digits + letters + digits) → set subject to that EXACT code, do NOT expand or interpret it into a subject name EVER
-- If a subject code is given like "22CS61A", "22CSE663", "22CSL68" → set subject = that code exactly
-- "who teaches X" → intent: "subjects", subject: expanded X
-- "what subjects does X teach" → intent: "subjects", faculty_name: X
-- "which faculty teaches X to class Y" → intent: "subjects", subject: X, class: Y
-- "6th sem", "6th semester", "sem 6", "semester 6", "sixth sem", "sixth semester" with intent "subjects" → set class to "6"
-- "subjects for 6th sem" or "subjects in 6th sem" → intent: "subjects", class: "6"
-- "6th sem a section", "6th sem section a" → class: "6A" , "6th sem b section", "6th sem section b" → class: "6B"
-- "how many subjects" → is_list_query: false, intent: "subjects"
-- Count queries about subjects should NOT set is_list_query to true
-- If the user mentions a subject code like "22CS61A", "22CS62", "22CSE661", "22CSL68" → set subject to that exact code as-is, do NOT expand or interpret it
-- "aiml lab", "ai ml lab", "aiml laboratory" → subject: "AI and ML Lab"
-- "AIML lab" → subject: "AI and ML Lab"
-- "for 6A and 6B", "for 6A & 6B" → set class to null, not a single class
-- When multiple classes are mentioned → set class to null so all classes are fetched
-
-═══════════════════════════════════════
-FACULTY RULES
-═══════════════════════════════════════
-- Strip ALL honorifics: "Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Sir", "Mam", "Ma'am", "Madam"
-  → "Dr. Vijaya Shetty" → faculty_name: "Vijaya Shetty"
-  → "Deepthi mam" → faculty_name: "Deepthi"
-- faculty_name must ONLY be an actual person's name
-- NEVER set faculty_name to roles like:
-  "hod", "hod of cse", "principal", "dean", "coordinator", "head"
-- Role-based queries:
-  → "who is hod of cse" → intent: faculty, designation: "head of department", department: "CSE", faculty_name: null
-  → "who is the principal" → intent: faculty, designation: "principal", faculty_name: null
-- designation normalization:
-  → "HOD", "head", "head of dept" → "head of department"
-  → "asst prof", "asst. professor" → "assistant professor"
-  → "assoc prof" → "associate professor"
-- "how many assistant professors" → intent: faculty, designation: "assistant professor", query_type: "count"
-- "list all professors in CSE" → intent: faculty, department: "CSE", is_list_query: true
-
-═══════════════════════════════════════
-CALENDAR RULES
-═══════════════════════════════════════
-- date: "YYYY-MM-DD" ONLY if a specific date is mentioned ("April 1st" → "2026-04-01")
-- month: "YYYY-MM" if only a month is mentioned ("in April" → "2026-04")
-- DO NOT set date if no specific date is mentioned
-- date range: "between April 1 and April 10" → date_from: "2026-04-01", date_to: "2026-04-10"
-- Current year is 2026. Assume 2026 for all dates unless specified otherwise.
-- "today" / "now" → today's date in YYYY-MM-DD
-- "tomorrow" → tomorrow's date in YYYY-MM-DD
-- "this week" → date_from: this Monday, date_to: this Friday
-- "when does sem start", "when does semester start", "when do classes start",
-  "when does sem X start", "start of semester", "sem start", "semester begins",
-  "classes begin", "college reopens", "when does 6th sem start"
-  → event_name: "Commencement of Classes", intent: "calendar"
-  - "when are co curricular activities", "list co curricular", 
-  "all co curricular", "co curricular dates", "show co curricular"
-  → is_list_query: true, event_type: "co_curricular"
-  When the user asks about "summer vacation duration" or "how long is summer vacation", 
-set:
-- query_type: "gap"
-- event_name: "Summer Vacations"
-- event_name_2: "Registration Odd (5th & 7th) Semester"
-- "college reopens after summer", "when does odd sem start", "when does next sem start" → event_name: "Registration Odd"
-═══════════════════════════════════════
-EVENT NAME MAPPING (match closest, handle typos)
-═══════════════════════════════════════
-- "mse 1", "mse1", "mid sem 1", "first midsem", "mse-1"   → "Mid-Semester Exam 1"
-- "mse 2", "mse2", "mid sem 2", "second midsem", "mse-2"  → "Mid-Semester Exam 2"
-- "mse", "mid sem", "midsem", "midterm" (no number)        → "MSE"
-- "see theory", "end sem theory", "see (theory)"           → "SEE (Theory)"
-- "see practicals", "see practical", "see (practicals)"    → "SEE (Practicals)"
-- "see", "end sem", "final exam" (no qualifier)            → "SEE (Theory)"
-- "anaadyanta", "anaadyantha", "anadyanta","fest","college fest"                 → "Anaadyanta"
-- "summer vacation", "summer vacations", "summer break"    → "Summer Vacations"
-- "classes start", "college reopens", "semester starts",
-  "start of sem", "start of semester", "coc"               → "Commencement of Classes"
-- "last working day", "lwd"                                → "Last Working Day"
-
-EVENT NAME CLEANUP:
-- NEVER include "Starts" or "Ends" in event_name for any query_type
-- Always strip "Starts", "Ends", "Start", "End" from event_name
-  → "SEE (Theory) Ends"  → event_name: "SEE (Theory)"
-  → "SEE (Theory) Starts" → event_name: "SEE (Theory)"
-EVENT NAME MAPPING (match closest, handle typos):
-- "mse 1", "mse1", "mid sem 1", "first midsem" → "MSE-1"
-- "mse 2", "mse2", "mid sem 2", "second midsem" → "MSE-2"
-- "mse", "mid sem", "midsem", "midterm" (no number) → "MSE"
-- "see", "end sem", "semester end", "final exam" → "SEE"
-- "anaadyanta", "anaadyantha", "anadyanta" → "Anaadyanta"
-- "classes start", "college reopens", "semester starts" → "Commencement of Classes"
-- Match user query to closest name from KNOWN_EVENT_NAMES (handle spelling mistakes)
-- "fest", "college fest", "cultural fest" → event_name: "Anaadyanta"
-- co_curricular ≠ fest — they are separate calendar entries
-
-═══════════════════════════════════════
-EVENT TYPE MAPPING
-═══════════════════════════════════════
-- "holiday", "no college", "off", "closed"                 → "holiday"
-- "registration", "backlog registration"                   → "registration"
-- "compensatory", "compensatory working day"               → "compensatory working days"
-- "working saturday"                                       → "compensatory working days"
-- "fest", "cultural", "co curricular", "co-curricular"    → "co_curricular"
-- "teaching days", "working days", "class days"            → "teaching days"
-- "saturday holiday", "saturday holidays"                  → "saturday holidays"
-- "general holiday", "general holidays", "named holiday"   → "general holidays"
-- "link holiday", "link holidays"                          → "link holidays"
-- For exam queries → use event_name field instead of event_type
-
-═══════════════════════════════════════
-COLLEGE OPEN QUERY
-═══════════════════════════════════════
-- "is there college on X?", "do we have college?", "is college open?",
-  "holiday or not?", "working day?"                        → is_college_open_query: true
-- everything else                                          → is_college_open_query: false
-
-═══════════════════════════════════════
-DURATION QUERIES
-═══════════════════════════════════════
-- "how many days is X", "how long is X", "duration of X"  → query_type: "duration"
-- If X is a named exam (MSE, SEE)                         → set event_name, do NOT set event_type
-- If X is a named vacation (summer vacations)             → set event_name: "Summer Vacations"
-- If X is a holiday type (not named)                      → set event_type: "holiday"
-- If X is a specific named holiday (e.g. "diwali")        → set event_name: "Diwali"
-
-DURATION_EACH — two events asked together:
-- "how many days is MSE-1 and MSE-2"
-  → query_type: "duration_each", event_name: "Mid-Semester Exam 1", event_name_2: "Mid-Semester Exam 2"
-- "MSE-1 & 2 how many days each"
-  → query_type: "duration_each", event_name: "Mid-Semester Exam 1", event_name_2: "Mid-Semester Exam 2"
-- "duration of SEE theory and practicals"
-  → query_type: "duration_each", event_name: "SEE (Theory)", event_name_2: "SEE (Practicals)"
-- Rule: whenever TWO named events appear in a single duration question → use "duration_each"
-When the user asks about "summer vacation duration" or "how long is summer vacation", 
-set:
-- query_type: "gap"
-- event_name: "Summer Vacations"
-- event_name_2: "Registration Odd (5th & 7th) Semester"
-═══════════════════════════════════════
-GAP QUERIES
-═══════════════════════════════════════
-- "gap between X and Y", "days between X and Y", "how many days between X and Y"
-  → query_type: "gap", event_name: X, event_name_2: Y
-- "do X and Y overlap"
-  → query_type: "overlap", event_name: X, event_name_2: Y
-
-
-═══════════════════════════════════════
-COUNT QUERIES
-═══════════════════════════════════════
-Use query_type: "count" for all of these. Set event_type accordingly:
-
-- "how many teaching days" / "total working days" / "how many class days"
-  → query_type: "count", event_type: "teaching days"
-
-- "how many saturday holidays" / "how many saturdays off"
-  → query_type: "count", event_type: "holiday"
-
-- "how many general holidays" / "how many named holidays" / "how many public holidays"
-  → query_type: "count", event_type: "holiday"
-
-- "how many link holidays"
-  → query_type: "count", event_type: "holiday"
-
-- "how many compensatory working days" / "how many compensatory days"
-  → query_type: "count", event_type: "academic"
-
-- "how many co curricular days" / "how many activity days"
-  → query_type: "count", event_type: "co_curricular"
-
-- "list", "all", "show all", "what are all", "give all" → is_list_query: true
-- specific single-entity queries                         → is_list_query: false
-
-"list all labs", "show all labs", "how many labs are there"
-→ {"intent":"lab","lab_query_type":"structured","lab_name":null,"is_list_query":true}
-
-═══════════════════════════════════════
-LAB RULES
-═══════════════════════════════════════
-- lab_query_type: "structured" → room number, how many computers, which room is lab X in
-- lab_query_type: "detail"     → configuration, specs, software, brands, what computers, 
-                                  what systems, what hardware, installed software
-- KEYWORDS that always mean detail: "configuration", "config", "specs", "brand", 
-  "what computers", "what systems", "installed", "software", "hardware"
-- KEYWORDS that always mean structured: "room number", "how many computers", "which room"
-- lab_name: always normalize to uppercase e.g. "lab 9" → "LAB9", "lab7" → "LAB7"
-- "labs with X systems", "which labs have X", "labs with X processors" → lab_query_type: "detail", lab_keyword: "X"
-- Extract X exactly as mentioned by user
-- If multiple labs are mentioned → set lab_names: ["LAB3", "LAB4"], lab_name: null
-- Single lab → lab_name: "LAB3", lab_names: null
-═══════════════════════════════════════
-EXAMPLES
-═══════════════════════════════════════
-"who takes 3rd period for 6A on monday"
-→ {"intent":"timetable","class":"6A","day":"Monday","period":"3"}
-
-"who is hod of cse"
-→ {"intent":"faculty","designation":"head of department","department":"CSE","faculty_name":null}
-
-"is there college on april 15"
-→ {"intent":"calendar","date":"2026-04-15","is_college_open_query":true}
-
-"who teaches DBMS to 6A"
-→ {"intent":"subjects","subject":"database management system","class":"6A"}
-
-"gap between mse1 and mse2"
-→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
-
-"how many days is MSE-1"
-→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","query_type":"duration"}
-
-"how many days is MSE-1 and MSE-2"
-→ {"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"duration_each"}
-
-"how many days is SEE theory and practicals"
-→ {"intent":"calendar","event_name":"SEE (Theory)","event_name_2":"SEE (Practicals)","query_type":"duration_each"}
-
-"how long are summer vacations"
-→ {"intent":"calendar","event_name":"Summer Vacations","query_type":"duration"}
-
-"how many teaching days this semester"
-→ {"intent":"calendar","query_type":"count","event_type":"teaching days"}
-
-"how many saturday holidays"
-→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
-
-"how many general holidays"
-→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
-
-"how many link holidays"
-→ {"intent":"calendar","query_type":"count","event_type":"holidays"}
-
-"how many compensatory working days"
-→ {"intent":"calendar","query_type":"count","event_type":"compensatory working days"}
-
-"gap between coc and mse1"
-→ {"intent":"calendar","event_name":"Commencement of Classes","event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
-
-"gap between mse2 and see practicals"
-→ {"intent":"calendar","event_name":"Mid-Semester Exam 2","event_name_2":"SEE (Practicals)","query_type":"gap"}
-
-"tell me about deepthi mam"
-→ {"intent":"faculty","faculty_name":"Deepthi"}
-
-"list all assistant professors"
-→ {"intent":"faculty","designation":"assistant professor","is_list_query":true}
-
-"how many days is the holiday in april"
-→ {"intent":"calendar","event_type":"holiday","month":"2026-04","query_type":"duration"}
-
-"is college open on may 1"
-→ {"intent":"calendar","date":"2026-05-01","is_college_open_query":true}
-
-"when does see theory start"
-→ {"intent":"calendar","event_name":"SEE (Theory)","query_type":null}
-
-"when does see theory end"
-→ {"intent":"calendar","event_name":"SEE (Theory)","query_type":null}
-"tell me number of days from start of sem to mse1"
-→ {"intent":"calendar","event_name":"Commencement of Classes",
-   "event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
-
-"how many days from coc to mse1"
-→ {"intent":"calendar","event_name":"Commencement of Classes",
-   "event_name_2":"Mid-Semester Exam 1","query_type":"gap"}
-
-"days between sem start and mse2"
-→ {"intent":"calendar","event_name":"Commencement of Classes",
-   "event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
-
-"when does the sem end"
--> {"intent":"calendar","event_name":"Last Working Day","query_type":"null"}
-
-"which room is lab 9 in"
-→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"structured"}
-
-"what are the configurations of computers in lab 9"
-→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"detail"}
-
-"tell me about lab 7"
-→ {"intent":"lab","lab_name":"LAB7","lab_query_type":"detail"}
-
-"how many computers in lab 10"
-→ {"intent":"lab","lab_name":"LAB10","lab_query_type":"structured"}
-
-"what are the configurations of computers in lab 9"
-→ {"intent":"lab","lab_name":"LAB9","lab_query_type":"detail"}
-
-"configuration of lab 7"
-→ {"intent":"lab","lab_name":"LAB7","lab_query_type":"detail"}
-
-"specs of computers in lab 10"
-→ {"intent":"lab","lab_name":"LAB10","lab_query_type":"detail"}
-
-"what brand of computers does lab 5 have"
-→ {"intent":"lab","lab_name":"LAB5","lab_query_type":"detail"}
-
-"is lab 9 free at 10am on tuesday"
-→ {"intent":"lab","lab_name":"LAB9","is_lab_free_query":true,"day":"Tuesday","period":"2","lab_query_type":null}
-
-"labs with more than 30 computers"
-→ {"intent":"lab","lab_query_type":"structured","min_computers":30,"lab_name":null}
-
-"labs with less than 30 computers"
-→ {"intent":"lab","lab_query_type":"structured","max_computers":30,"lab_name":null}
-
-"show labs with GPU systems"
-→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"GPU","lab_name":null}
-
-"labs with i7 processors"
-→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"i7","lab_name":null}
-
-"which labs have Dell computers"
-→ {"intent":"lab","lab_query_type":"detail","lab_keyword":"Dell","lab_name":null}
-
-"is lab 3 and lab 4 free on wednesday at 11am"
-→ {"intent":"lab","is_lab_free_query":true,"lab_names":["LAB3","LAB4"],"lab_name":null,"day":"Wednesday","period":"3"}
+You are a query parser for NMIT college. Return ONLY valid JSON. No explanation, no markdown.
+
+OUTPUT SCHEMA:
+{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"Mid-Semester Exam 1"|"Mid-Semester Exam 2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null}
+
+INTENT: timetable=schedule/period/timing | subjects=who teaches what | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
+
+SUBJECT ABBREVIATIONS (expand always):
+DBMS→database management system, OS→operating system, CN→computer networks, DS→data structures, DAA→design and analysis of algorithms, OOP/OOPS→object oriented programming, SE→software engineering, CD→compiler design, TOC→theory of computation, AI→artificial intelligence, ML→machine learning, DM→data mining, BDT→big data technologies, ASD→agile software development, ACA→advanced computer architecture, GT→game theory, PPL→placement practice lab, ARVR/VRAR→virtual reality augmented reality, HPC→high performance computing, CNS→cryptography and network security
+
+DAY/TIME: mon→Monday, tue→Tuesday, wed→Wednesday, thu→Thursday, fri→Friday | "1st/first"→"1", "2nd"→"2", "3rd"→"3" | "10:05AM"→"10:05" | "2pm"→"2pm" | "first class"→"1" | "last class"→"7"
+
+CLASS: must be number+letter like 6A, 5B. "6th sem/semester 6"→null. Only number given→null. Only letter given→null. Multiple classes mentioned→null.
+
+SUBJECT RULES:
+- Subject codes like "22CS61A","22CSE663","22CSL68" → set subject exactly as-is, never expand
+- "who teaches X"→intent:subjects, subject:X | "what does X teach"→intent:subjects, faculty_name:X
+- "6th sem subjects"→intent:subjects, class:"6" | "6th sem A section"→class:"6A"
+- "aiml lab","ai ml lab"→subject:"AI and ML Lab"
+- "how many subjects"→is_list_query:false
+
+FACULTY RULES:
+- Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"
+- faculty_name NEVER contains roles: hod/principal/dean/coordinator/head
+- "who is hod of cse"→designation:"head of department", department:"CSE", faculty_name:null
+- HOD/head/head of dept→"head of department" | asst prof→"assistant professor" | assoc prof→"associate professor"
+- "how many assistant professors"→designation:"assistant professor", query_type:"count"
+- "list all professors in CSE"→department:"CSE", is_list_query:true
+
+CALENDAR RULES:
+- Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
+- today→today's date | tomorrow→tomorrow's date | this week→date_from:Monday, date_to:Friday
+- "when does sem start/classes begin/college reopens"→event_name:"Commencement of Classes"
+- "college reopens after summer/odd sem start"→event_name:"Registration Odd (5th & 7th) Semester"
+- "summer vacation duration/how long is summer vacation"→query_type:"gap", event_name:"Summer Vacations", event_name_2:"Registration Odd (5th & 7th) Semester"
+- Strip "Starts"/"Ends" from event_name always
+
+EVENT NAMES: mse1/mse-1/mid sem 1→"Mid-Semester Exam 1" | mse2→"Mid-Semester Exam 2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission"
+
+EVENT TYPES: holiday/no college/off→"holiday" | registration→"registration" | compensatory/working saturday→"compensatory working days" | fest/co curricular→"co_curricular" | working days/class days→"teaching days" | saturday holiday→"saturday holidays" | general/named holiday→"general holidays" | link holiday→"link holidays" | exam queries→use event_name not event_type
+
+COLLEGE OPEN: "is there college/holiday or not/working day?"→is_college_open_query:true
+
+DURATION: "how many days is X/how long is X"→query_type:"duration" | two events in one question→query_type:"duration_each" | "gap between X and Y"→query_type:"gap", event_name:X, event_name_2:Y | "X and Y overlap"→query_type:"overlap"
+
+COUNT (query_type:"count"): teaching days→event_type:"teaching days" | saturday holidays→event_type:"saturday holidays" | general holidays→event_type:"general holidays" | link holidays→event_type:"link holidays" | compensatory days→event_type:"compensatory working days" | co curricular→event_type:"co_curricular"
+
+LIST: list/all/show all/give all→is_list_query:true | single entity→is_list_query:false
+
+LAB RULES:
+- structured=room number/computer count | detail=config/specs/brand/software/hardware
+- Keywords→detail: configuration/config/specs/brand/what computers/installed/software/hardware
+- Keywords→structured: room number/how many computers/which room
+- lab_name: normalize to uppercase "lab 9"→"LAB9" | multiple labs→lab_names:["LAB3","LAB4"], lab_name:null
+- "labs with X systems/processors"→lab_query_type:"detail", lab_keyword:"X"
+- "is lab X free at Y on Z"→is_lab_free_query:true, lab_name:"LABX", day:Y, period:Z
+
+EXAMPLES:
+"who takes 3rd period for 6A on monday"→{"intent":"timetable","class":"6A","day":"Monday","period":"3"}
+"who is hod of cse"→{"intent":"faculty","designation":"head of department","department":"CSE","faculty_name":null}
+"is there college on april 15"→{"intent":"calendar","date":"2026-04-15","is_college_open_query":true}
+"who teaches DBMS to 6A"→{"intent":"subjects","subject":"database management system","class":"6A"}
+"gap between mse1 and mse2"→{"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
+"how many days is MSE-1 and MSE-2"→{"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"duration_each"}
+"tell me about deepthi mam"→{"intent":"faculty","faculty_name":"Deepthi"}
+"list all assistant professors"→{"intent":"faculty","designation":"assistant professor","is_list_query":true}
+"which room is lab 9 in"→{"intent":"lab","lab_name":"LAB9","lab_query_type":"structured"}
+"what are the configurations of lab 9"→{"intent":"lab","lab_name":"LAB9","lab_query_type":"detail"}
+"is lab 9 free at 10am on tuesday"→{"intent":"lab","lab_name":"LAB9","is_lab_free_query":true,"day":"Tuesday","period":"2"}
+"labs with more than 30 computers"→{"intent":"lab","lab_query_type":"structured","min_computers":30,"lab_name":null}
+"labs with i7 processors"→{"intent":"lab","lab_query_type":"detail","lab_keyword":"i7","lab_name":null}
+"is lab 3 and lab 4 free on wednesday at 11am"→{"intent":"lab","is_lab_free_query":true,"lab_names":["LAB3","LAB4"],"lab_name":null,"day":"Wednesday","period":"3"}
+"when does sem end"→{"intent":"calendar","event_name":"Last Working Day","query_type":null}
+"when is cie ledger submission"→{"intent":"calendar","event_name":"CIE Ledger Submission","query_type":null}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
-    # build context from last 2 exchanges if available
+    # only add history if query contains pronouns suggesting follow-up
+    follow_up_words = ["her", "him", "his", "she", "he", "they", "their", "more about", "tell more", "elaborate", "what about", "and her", "and him"]
+    needs_history = any(word in user_query.lower() for word in follow_up_words)
+    
     history_context = ""
-    if chat_history:
-        recent = chat_history[-4:]  # last 2 user+assistant pairs
+    if chat_history and needs_history:
+        recent = chat_history[-2:]  # only last 1 exchange
         for msg in recent:
             role = "User" if msg["role"] == "user" else "Assistant"
-            history_context += f"{role}: {msg['content']}\n"
+            content = msg['content'][:150]  # max 150 chars
+            history_context += f"{role}: {content}\n"
 
     user_content = f"Recent conversation:\n{history_context}\nCurrent query: {user_query}" if history_context else user_query
 
     response = client.chat.completions.create(
         model=PARSER_MODEL,
-        max_tokens=300,  # parser only needs small output
+        max_tokens=300,
         messages=[
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
             {"role": "user", "content": user_content}
