@@ -27,6 +27,15 @@ TIME_SLOT_MAP = {
     "2:25": "02:25-03:20",
     "3pm": "03:20-04:15",
     "3:20": "03:20-04:15",
+    "2:30": "02:25-03:20",
+    "2:30pm": "02:25-03:20",
+    "14:30": "02:25-03:20",
+    "3:30": "03:20-04:15",
+    "3:30pm": "03:20-04:15",
+    "11:30": "11:00-11:55",
+    "12:30": "12:35-01:30",
+    "1:30": "01:30-02:25",
+    "1:30pm": "01:30-02:25",
 }
 EVENT_TYPE_MAP = {
     "semester end": "exam",
@@ -872,3 +881,204 @@ def query_faculty(params: dict) -> list:
         """).limit(5).execute().data
 
     return result
+def query_lab(params: dict) -> list:
+    supabase = get_supabase_client()
+    query = supabase.table("lab_infrastructure").select("*")
+
+    if params.get("lab_name"):
+        import re
+        match = re.search(r'\d+', params["lab_name"])
+        lab_number = match.group() if match else params["lab_name"]
+        query = query.ilike("lab_name", f"%Lab-{lab_number}%")
+
+    if params.get("min_computers"):
+        query = query.gt("no_of_computers", params["min_computers"])
+
+    if params.get("max_computers"):
+        query = query.lt("no_of_computers", params["max_computers"])
+
+    return query.execute().data
+
+
+def format_lab_chunks(data: list) -> list:
+    chunks = []
+    for row in data:
+        text = (
+            f"{row.get('lab_name')} is located in room {row.get('room_number')} "
+            f"and has {row.get('no_of_computers', 'unknown')} computers."
+        )
+        chunks.append({
+            "content": text,
+            "metadata": {"source_type": "lab"},
+            "similarity": 1.0
+        })
+    return chunks
+
+def query_lab_embeddings(params: dict) -> list:
+    supabase = get_supabase_client()
+
+    lab_name = params.get("lab_name", "")  # e.g. "LAB9"
+
+    result = supabase.table("unified_embeddings").select("*") \
+        .eq("source_type", "lab") \
+        .eq("source_id", lab_name) \
+        .in_("chunk_type", ["02_brands", "03_configuration"]) \
+        .execute()
+
+    if not result.data:
+        return []
+
+    return [
+        {
+            "content": f"[{row.get('metadata', {}).get('lab_name', row.get('source_id', ''))}] {row.get('raw_text')}",
+            "metadata": row.get("metadata") or {},
+            "similarity": 1.0
+        }
+        for row in result.data
+        if row.get("raw_text")
+    ]
+
+def query_lab_availability(params: dict) -> list:
+    supabase = get_supabase_client()
+
+    lab_name = params.get("lab_name", "")
+    import re
+    match = re.search(r'\d+', lab_name)
+    lab_number = match.group() if match else lab_name
+
+    # Step 1: get lab_id from lab_infrastructure
+    lab_result = supabase.table("lab_infrastructure") \
+        .select("lab_id, lab_name, room_number") \
+        .ilike("lab_name", f"%Lab-{lab_number}%") \
+        .execute()
+
+    if not lab_result.data:
+        return [{"content": f"Lab {lab_number} not found.", "metadata": {}, "similarity": 1.0}]
+
+    lab = lab_result.data[0]
+    lab_id = lab["lab_id"]
+    lab_display = lab["lab_name"]
+
+    # Step 2: get time_slot from period
+    # Step 2: get time_slot from period
+    time_slot = None
+    if params.get("period"):
+        raw = str(params["period"]).lower().strip()
+        time_slot = resolve_time_slot(raw)
+        if not time_slot:
+            return [{"content": f"'{params['period']}' is outside college hours (9:00 AM - 4:15 PM).", "metadata": {}, "similarity": 1.0}]
+    day = params.get("day", "")
+
+    # Step 3: fetch timetable rows where is_lab=true for given day/time
+    query = supabase.table("timetable").select("subject_code, class, day_of_week, time_slot") \
+        .eq("is_lab", True)
+
+    if day:
+        query = query.eq("day_of_week", day)
+    if time_slot:
+        query = query.eq("time_slot", time_slot)
+
+    tt_rows = query.execute().data
+
+    if not tt_rows:
+        return [{"content": f"{lab_display} is FREE on {day} during {time_slot}.", "metadata": {}, "similarity": 1.0}]
+
+    # Step 4: for each timetable row, check subjects table for matching lab_id
+    occupied_rows = []
+    for row in tt_rows:
+        subj_result = supabase.table("subjects").select("subject_name, lab_id") \
+            .eq("subject_code", row["subject_code"]) \
+            .eq("class", row["class"]) \
+            .eq("lab_id", lab_id) \
+            .execute()
+
+        if subj_result.data:
+            subject_name = subj_result.data[0].get("subject_name", "a class")
+            occupied_rows.append({
+                "day": row["day_of_week"],
+                "time_slot": row["time_slot"],
+                "class": row["class"],
+                "subject": subject_name
+            })
+
+    if not occupied_rows:
+        return [{"content": f"{lab_display} is FREE on {day} during {time_slot}.", "metadata": {}, "similarity": 1.0}]
+
+    chunks = []
+    for r in occupied_rows:
+        chunks.append({
+            "content": f"{lab_display} is OCCUPIED on {r['day']} during {r['time_slot']} by class {r['class']} for {r['subject']}.",
+            "metadata": {},
+            "similarity": 1.0
+        })
+    return chunks
+
+def resolve_time_slot(raw: str) -> str:
+    """Resolve any time string to the nearest timetable slot."""
+    # direct map first
+    slot = TIME_SLOT_MAP.get(raw.lower().strip())
+    if slot:
+        return slot
+
+    # extract numeric time and find nearest slot
+    import re
+    match = re.search(r'(\d{1,2}):?(\d{0,2})\s*(am|pm)?', raw.lower())
+    if not match:
+        return None
+
+    hour = int(match.group(1))
+    minute = int(match.group(2)) if match.group(2) else 0
+    meridiem = match.group(3)
+
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    if meridiem == "am" and hour == 12:
+        hour = 0
+
+    total_minutes = hour * 60 + minute
+
+    # slot start times in minutes
+    slots = [
+        (9*60,      "09:00-09:55"),
+        (10*60+5,   "10:05-11:00"),
+        (11*60,     "11:00-11:55"),
+        (12*60+35,  "12:35-01:30"),
+        (13*60+30,  "01:30-02:25"),
+        (14*60+25,  "02:25-03:20"),
+        (15*60+20,  "03:20-04:15"),
+    ]
+
+    # find which slot this time falls within (not just nearest start)
+    slot_ranges = [
+        (9*60,      9*60+55,    "09:00-09:55"),
+        (10*60+5,   11*60,      "10:05-11:00"),
+        (11*60,     11*60+55,   "11:00-11:55"),
+        (12*60+35,  13*60+30,   "12:35-01:30"),
+        (13*60+30,  14*60+25,   "01:30-02:25"),
+        (14*60+25,  15*60+20,   "02:25-03:20"),
+        (15*60+20,  16*60+15,   "03:20-04:15"),
+    ]
+
+    for start, end, slot in slot_ranges:
+        if start <= total_minutes <= end:
+            return slot
+
+    return None
+def query_lab_by_keyword(keyword: str) -> list:
+    supabase = get_supabase_client()
+
+    result = supabase.table("unified_embeddings").select("*") \
+        .eq("source_type", "lab") \
+        .eq("chunk_type", "02_brands") \
+        .ilike("raw_text", f"%{keyword}%") \
+        .execute()
+
+    return [
+        {
+            "content": f"[{row.get('metadata', {}).get('lab_name', row.get('source_id', ''))}] {row.get('raw_text')}",
+            "metadata": row.get("metadata") or {},
+            "similarity": 1.0
+        }
+        for row in result.data
+        if row.get("raw_text")
+    ]
