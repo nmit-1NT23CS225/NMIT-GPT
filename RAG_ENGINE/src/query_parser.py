@@ -42,6 +42,8 @@ FACULTY RULES:
 - HOD/head/head of dept→"head of department" | asst prof→"assistant professor" | assoc prof→"associate professor"
 - "how many assistant professors"→designation:"assistant professor", query_type:"count"
 - "list all professors in CSE"→department:"CSE", is_list_query:true
+- "Dileep Reddy sir" → faculty_name: "Dileep Reddy"
+- "sir" at end of name must be stripped
 
 CALENDAR RULES:
 - Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
