@@ -17,14 +17,26 @@ PARSE_SYSTEM_PROMPT = """
 You are a query parser for NMIT college. Return ONLY valid JSON. No explanation, no markdown.
 
 OUTPUT SCHEMA:
-{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"Mid-Semester Exam 1"|"Mid-Semester Exam 2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null}
+{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"Mid-Semester Exam 1"|"Mid-Semester Exam 2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null,
+    "free_period_query": true | false,          ← user asks about free/empty periods
+    "faculty_timetable_query": true | false,    ← "what does Dr. X teach this week"
+    "full_day_query": true | false,             ← "what's the schedule for 6A on Monday"
+    "subject_schedule_query": true | false,     ← "when is DBMS for 6A?"}
 
-INTENT: timetable=schedule/period/timing | subjects=who teaches what | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
+INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
+
+TIMETABLE SUB-TYPES:
+- "schedule of 6A on Monday" / "what does 6A have on Tuesday" → full_day_query: true, class: "6A", day: "Monday"
+- "free periods for 6A on Wednesday" / "when is 6A free" → free_period_query: true, class: "6A", day: "Wednesday"
+- "what does Dr. X teach" / "Dr. X timetable" / "X mam schedule" → faculty_timetable_query: true, faculty_name: "X"
+- "when is DBMS for 6A" / "which period is OS" → subject_schedule_query: true, subject: "expanded name", class: "6A"
+- "what is happening on Friday period 3" (no class given) → day: "Friday", period: "3", class: null
 
 SUBJECT ABBREVIATIONS (expand always):
 DBMS→database management system, OS→operating system, CN→computer networks, DS→data structures, DAA→design and analysis of algorithms, OOP/OOPS→object oriented programming, SE→software engineering, CD→compiler design, TOC→theory of computation, AI→artificial intelligence, ML→machine learning, DM→data mining, BDT→big data technologies, ASD→agile software development, ACA→advanced computer architecture, GT→game theory, PPL→placement practice lab, ARVR/VRAR→virtual reality augmented reality, HPC→high performance computing, CNS→cryptography and network security
 
 DAY/TIME: mon→Monday, tue→Tuesday, wed→Wednesday, thu→Thursday, fri→Friday | "1st/first"→"1", "2nd"→"2", "3rd"→"3" | "10:05AM"→"10:05" | "2pm"→"2pm" | "first class"→"1" | "last class"→"7"
+When query contains "(current period is N)" → set period to that exact number N. Never convert a clock time yourself; trust the pre-resolved period number.
 
 CLASS: must be number+letter like 6A, 5B. "6th sem/semester 6"→null. Only number given→null. Only letter given→null. Multiple classes mentioned→null.
 
@@ -47,7 +59,14 @@ FACULTY RULES:
 
 CALENDAR RULES:
 - Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
-- today→today's date | tomorrow→tomorrow's date | this week→date_from:Monday, date_to:Friday
+- All relative date words (today, yesterday, tomorrow, day before yesterday, day after tomorrow,
+  morning, afternoon, this week) are pre-resolved by the pipeline BEFORE this parser runs.
+  You will see them as YYYY-MM-DD strings or period numbers in the query text — just copy them.
+  NEVER try to compute or guess a date yourself.
+  Example: "what class does 6A have on 2026-05-27 (Wednesday)" → date:"2026-05-27", day:"Wednesday"
+  Example: "is there college on 2026-05-25 (Monday)" → date:"2026-05-25"
+  Example: "schedule on 2026-05-26 (Tuesday)" → date:"2026-05-26", day:"Tuesday"
+  When query contains "(current period is N)" → period:"N" exactly.
 - "when does sem start/classes begin/college reopens"→event_name:"Commencement of Classes"
 - "college reopens after summer/odd sem start"→event_name:"Registration Odd (5th & 7th) Semester"
 - "summer vacation duration/how long is summer vacation"→query_type:"gap", event_name:"Summer Vacations", event_name_2:"Registration Odd (5th & 7th) Semester"
@@ -90,6 +109,8 @@ EXAMPLES:
 "is lab 3 and lab 4 free on wednesday at 11am"→{"intent":"lab","is_lab_free_query":true,"lab_names":["LAB3","LAB4"],"lab_name":null,"day":"Wednesday","period":"3"}
 "when does sem end"→{"intent":"calendar","event_name":"Last Working Day","query_type":null}
 "when is cie ledger submission"→{"intent":"calendar","event_name":"CIE Ledger Submission","query_type":null}
+"what class does 6D have now (current day is Monday, current period is 3, current time slot is 11:00-11:55)"→{"intent":"timetable","class":"6D","day":"Monday","period":"3","full_day_query":false,"free_period_query":false,"faculty_timetable_query":false,"subject_schedule_query":false}
+"what class does 6D have now (current day is Tuesday, current period is 5, current time slot is 01:30-02:25)"→{"intent":"timetable","class":"6D","day":"Tuesday","period":"5","full_day_query":false,"free_period_query":false,"faculty_timetable_query":false,"subject_schedule_query":false}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
