@@ -174,6 +174,40 @@ def query_timetable(params: dict) -> list:
 def query_subjects(params: dict) -> list:
     """Fetch subject/faculty data using exact SQL filters."""
     supabase = get_supabase_client()
+    if params.get("batch"):
+        # Step 1: get subject_code from subjects table
+        subj = supabase.table("subjects") \
+            .select("subject_code, subject_name") \
+            .ilike("subject_name", f"%{params['subject']}%") \
+            .limit(1).execute().data
+        
+        if not subj:
+            return []
+        
+        subject_code = subj[0]["subject_code"]
+        subject_name = subj[0]["subject_name"]
+
+        # Step 2: get lab from timetable using batch (stored as class) + subject_code
+        result = supabase.table("timetable") \
+            .select("class, subject_code, lab_infrastructure(lab_name, room_number)") \
+            .eq("class", params["batch"]) \
+            .eq("subject_code", subject_code) \
+            .execute().data
+        
+        if not result:
+            return []
+
+        lab = result[0].get("lab_infrastructure") or {}
+        lab_name = lab.get("lab_name", "unknown")
+        room = lab.get("room_number", "unknown")
+
+        # Return a pre-formatted chunk so LLM answers correctly
+        return [{
+            "__direct_chunk__": True,
+            "content": f"The lab for {subject_name} ({subject_code}) for batch {params['batch']} is {lab_name}, located in room {room}.",
+            "metadata": {"source_type": "subjects"},
+            "similarity": 1.0
+        }]
 
     query = supabase.table("subjects") \
         .select("""

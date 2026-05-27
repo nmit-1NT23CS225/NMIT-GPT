@@ -38,14 +38,20 @@ DBMS→database management system, OS→operating system, CN→computer networks
 DAY/TIME: mon→Monday, tue→Tuesday, wed→Wednesday, thu→Thursday, fri→Friday | "1st/first"→"1", "2nd"→"2", "3rd"→"3" | "10:05AM"→"10:05" | "2pm"→"2pm" | "first class"→"1" | "last class"→"7"
 When query contains "(current period is N)" → set period to that exact number N. Never convert a clock time yourself; trust the pre-resolved period number.
 
-CLASS: must be number+letter like 6A, 5B. "6th sem/semester 6"→null. Only number given→null. Only letter given→null. Multiple classes mentioned→null.
-
+CLASS: must be number+letter like 6A, 5B. "6th sem/semester 6"→null. Only number given→null. Only letter given→null. Multiple classes mentioned→null. - Batch pattern: "[class] batch [n]" → class letter repeats, e.g.:
+  "6A batch 1"→"6A-A1", "6A batch 2"→"6A-A2", "6A batch 3"→"6A-A3"
+  "6B batch 1"→"6B-B1", "6B batch 2"→"6B-B2", "6B batch 3"→"6B-B3"
+  "6C batch 1"→"6C-C1", "6C batch 2"→"6C-C2", "6C batch 3"→"6C-C3"
+  "6D batch 1"→"6D-D1", "6D batch 2"→"6D-D2", "6D batch 3"→"6D-D3"
+  Same pattern for 5A, 5B, 5C, 5D etc.
 SUBJECT RULES:
 - Subject codes like "22CS61A","22CSE663","22CSL68" → set subject exactly as-is, never expand
 - "who teaches X"→intent:subjects, subject:X | "what does X teach"→intent:subjects, faculty_name:X
 - "6th sem subjects"→intent:subjects, class:"6" | "6th sem A section"→class:"6A"
 - "aiml lab","ai ml lab"→subject:"AI and ML Lab"
 - "how many subjects"→is_list_query:false
+- "which lab/lab number/what lab for [subject] [class]" → intent:subjects, not intent:lab
+- "aiml lab"/"ai ml lab" queries with a class → intent:subjects, subject:"AI and ML Lab"
 
 FACULTY RULES:
 - Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"
@@ -90,7 +96,7 @@ LAB RULES:
 - Keywords→structured: room number/how many computers/which room
 - lab_name: normalize to uppercase "lab 9"→"LAB9" | multiple labs→lab_names:["LAB3","LAB4"], lab_name:null
 - "labs with X systems/processors"→lab_query_type:"detail", lab_keyword:"X"
-- "is lab X free at Y on Z"→is_lab_free_query:true, lab_name:"LABX", day:Y, period:Z
+- Any query containing "free", "occupied", "available", or "busy" with a lab name → is_lab_free_query:true, day and period if provided
 
 EXAMPLES:
 "who takes 3rd period for 6A on monday"→{"intent":"timetable","class":"6A","day":"Monday","period":"3"}
@@ -111,6 +117,8 @@ EXAMPLES:
 "when is cie ledger submission"→{"intent":"calendar","event_name":"CIE Ledger Submission","query_type":null}
 "what class does 6D have now (current day is Monday, current period is 3, current time slot is 11:00-11:55)"→{"intent":"timetable","class":"6D","day":"Monday","period":"3","full_day_query":false,"free_period_query":false,"faculty_timetable_query":false,"subject_schedule_query":false}
 "what class does 6D have now (current day is Tuesday, current period is 5, current time slot is 01:30-02:25)"→{"intent":"timetable","class":"6D","day":"Tuesday","period":"5","full_day_query":false,"free_period_query":false,"faculty_timetable_query":false,"subject_schedule_query":false}
+"what is the lab number for aiml lab 6D batch 3"→{"intent":"subjects","subject":"AI and ML Lab","class":"6D-D3"}
+"is lab 11 occupied on Monday at 3:20"→{"intent":"lab","lab_name":"LAB11","is_lab_free_query":true,"day":"Monday","period":"7"}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

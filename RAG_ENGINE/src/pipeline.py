@@ -185,6 +185,8 @@ Rules for Subject queries:
 - "who teaches X for 6A and 6B" → list faculty for each class separately
 - Example: "Dr. X teaches CNS for 6A, Dr. Y teaches CNS for 6B"
 - "does X teach any lab?" → scan each chunk's subject name for the word "Lab" — if NONE contain "Lab" → answer "No, [faculty name] does not teach any lab subject" — NEVER say Yes unless a chunk explicitly has "Lab" in the subject name
+- When the user asks for a "lab number" or "which lab", extract the Lab name and room number from the chunk, NOT the subject code.
+- Example: "Lab: Computer Lab-1 (Room 120) in room 120" → answer "Computer Lab-1 in room 120"
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
@@ -468,8 +470,10 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         
     elif intent == "lab":
         lab_query_type = parsed.get("lab_query_type")
+        free_keywords = ["free", "occupied", "available", "busy"]
+        if any(w in user_query.lower() for w in free_keywords):
+            parsed["is_lab_free_query"] = True
         is_lab_free = parsed.get("is_lab_free_query", False)
-
         if is_lab_free:
             lab_names = parsed.get("lab_names")
             if lab_names:
