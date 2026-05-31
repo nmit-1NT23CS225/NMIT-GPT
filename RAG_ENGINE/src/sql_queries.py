@@ -229,6 +229,8 @@ def query_subjects(params: dict) -> list:
     if params.get("class"):
         if params["class"] == "6":
             query = query.like("class", "6%")
+        elif params.get("subject") and "lab" in params.get("subject", "").lower():
+            query = query.like("class", f"{params['class']}%")
         else:
             query = query.eq("class", params["class"])
 

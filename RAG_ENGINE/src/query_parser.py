@@ -31,9 +31,11 @@ TIMETABLE SUB-TYPES:
 - "what does Dr. X teach" / "Dr. X timetable" / "X mam schedule" → faculty_timetable_query: true, faculty_name: "X"
 - "when is DBMS for 6A" / "which period is OS" → subject_schedule_query: true, subject: "expanded name", class: "6A"
 - "what is happening on Friday period 3" (no class given) → day: "Friday", period: "3", class: null
+- "initials/short form/abbreviation for X"→intent:subjects, subject:X
+
 
 SUBJECT ABBREVIATIONS (expand always):
-DBMS→database management system, OS→operating system, CN→computer networks, DS→data structures, DAA→design and analysis of algorithms, OOP/OOPS→object oriented programming, SE→software engineering, CD→compiler design, TOC→theory of computation, AI→artificial intelligence, ML→machine learning, DM→data mining, BDT→big data technologies, ASD→agile software development, ACA→advanced computer architecture, GT→game theory, PPL→placement practice lab, ARVR/VRAR→virtual reality augmented reality, HPC→high performance computing, CNS→cryptography and network security
+DBMS→database management system, OS→operating system, CN→computer networks, DS→data structures, DAA→design and analysis of algorithms, OOP/OOPS→object oriented programming, SE→software engineering, CD→compiler design, TOC→theory of computation, AI→artificial intelligence, ML→machine learning, DM→data mining, BDT→big data technologies, ASD→agile software development, ACA→advanced computer architecture, GT→game theory, PPL→placement practice lab, ARVR/VRAR/virtual reality and augmented reality/virtual reality & augmented reality→"Virtual Reality & Augmented Reality", HPC→high performance computing, CNS→cryptography and network security
 
 DAY/TIME: mon→Monday, tue→Tuesday, wed→Wednesday, thu→Thursday, fri→Friday | "1st/first"→"1", "2nd"→"2", "3rd"→"3" | "10:05AM"→"10:05" | "2pm"→"2pm" | "first class"→"1" | "last class"→"7"
 When query contains "(current period is N)" → set period to that exact number N. Never convert a clock time yourself; trust the pre-resolved period number.
@@ -52,6 +54,7 @@ SUBJECT RULES:
 - "how many subjects"→is_list_query:false
 - "which lab/lab number/what lab for [subject] [class]" → intent:subjects, not intent:lab
 - "aiml lab"/"ai ml lab" queries with a class → intent:subjects, subject:"AI and ML Lab"
+- Lab subject queries grouped by batch: "6A-A1: [faculty], 6A-A2: [faculty1] and [faculty2], 6A-A3: [faculty1] and [faculty2]"
 
 FACULTY RULES:
 - Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"
@@ -119,6 +122,8 @@ EXAMPLES:
 "what class does 6D have now (current day is Tuesday, current period is 5, current time slot is 01:30-02:25)"→{"intent":"timetable","class":"6D","day":"Tuesday","period":"5","full_day_query":false,"free_period_query":false,"faculty_timetable_query":false,"subject_schedule_query":false}
 "what is the lab number for aiml lab 6D batch 3"→{"intent":"subjects","subject":"AI and ML Lab","class":"6D-D3"}
 "is lab 11 occupied on Monday at 3:20"→{"intent":"lab","lab_name":"LAB11","is_lab_free_query":true,"day":"Monday","period":"7"}
+"who teaches CNS for 6A and 6B"→{"intent":"subjects","subject":"cryptography and network security","class":null}
+"what are the initials for big data technologies"→{"intent":"subjects","subject":"Big Data Technologies","class":null}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
