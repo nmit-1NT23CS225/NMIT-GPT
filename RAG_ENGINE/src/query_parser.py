@@ -21,7 +21,8 @@ OUTPUT SCHEMA:
     "free_period_query": true | false,          ← user asks about free/empty periods
     "faculty_timetable_query": true | false,    ← "what does Dr. X teach this week"
     "full_day_query": true | false,             ← "what's the schedule for 6A on Monday"
-    "subject_schedule_query": true | false,     ← "when is DBMS for 6A?"}
+    "subject_schedule_query": true | false,     ← "when is DBMS for 6A?"
+    "direct_field": "email"|"designation"|"department"|"experience"|"joining_date"|"google_scholar"|"orcid"|"linkedin"|null}
 
 INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
 
@@ -54,7 +55,9 @@ SUBJECT RULES:
 - "how many subjects"→is_list_query:false
 - "which lab/lab number/what lab for [subject] [class]" → intent:subjects, not intent:lab
 - "aiml lab"/"ai ml lab" queries with a class → intent:subjects, subject:"AI and ML Lab"
-- Lab subject queries grouped by batch: "6A-A1: [faculty], 6A-A2: [faculty1] and [faculty2], 6A-A3: [faculty1] and [faculty2]"
+- Lab subject queries grouped by batch: "6A-A1: [faculty], 6A-A2: [faculty1] and [faculty2], 6A-A3: [faculty1] and [faculty2]
+- "what subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null
+- "which subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null"
 
 FACULTY RULES:
 - Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"
@@ -62,9 +65,19 @@ FACULTY RULES:
 - "who is hod of cse"→designation:"head of department", department:"CSE", faculty_name:null
 - HOD/head/head of dept→"head of department" | asst prof→"assistant professor" | assoc prof→"associate professor"
 - "how many assistant professors"→designation:"assistant professor", query_type:"count"
-- "list all professors in CSE"→department:"CSE", is_list_query:true
+- "list all faculty" → intent: faculty, is_list_query: true, designation: null
+- "list all faculty members" → intent: faculty, is_list_query: true, designation: null
+- "show all faculty" → intent: faculty, is_list_query: true, designation: null
+- "how many professors"→ designation: "professor, query_type:count"
 - "Dileep Reddy sir" → faculty_name: "Dileep Reddy"
 - "sir" at end of name must be stripped
+- "X email/mail/contact" → intent:faculty, faculty_name:"X", direct_field:"email"
+- "X linkedin/linked in" → intent:faculty, faculty_name:"X", direct_field:"linkedin"
+- "X google scholar/scholar/publications" → intent:faculty, faculty_name:"X", direct_field:"google_scholar"
+- "X orcid/orchid" → intent:faculty, faculty_name:"X", direct_field:"orcid"
+- "X designation/role/position" → intent:faculty, faculty_name:"X", direct_field:"designation"
+- "X experience/exp" → intent:faculty, faculty_name:"X", direct_field:"experience"
+- "X department/dept" → intent:faculty, faculty_name:"X", direct_field:"department"
 
 CALENDAR RULES:
 - Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
@@ -80,8 +93,9 @@ CALENDAR RULES:
 - "college reopens after summer/odd sem start"→event_name:"Registration Odd (5th & 7th) Semester"
 - "summer vacation duration/how long is summer vacation"→query_type:"gap", event_name:"Summer Vacations", event_name_2:"Registration Odd (5th & 7th) Semester"
 - Strip "Starts"/"Ends" from event_name always
+-"Unless explicitly labeled as an end date, all dates in the database represent the start date of the event or vacation period."
 
-EVENT NAMES: mse1/mse-1/mid sem 1→"Mid-Semester Exam 1" | mse2→"Mid-Semester Exam 2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission"
+EVENT NAMES: mse1/mse-1/mid sem 1→"Mid-Semester Exam 1" | mse2→"Mid-Semester Exam 2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
 
 EVENT TYPES: holiday/no college/off→"holiday" | registration→"registration" | compensatory/working saturday→"compensatory working days" | fest/co curricular→"co_curricular" | working days/class days→"teaching days" | saturday holiday→"saturday holidays" | general/named holiday→"general holidays" | link holiday→"link holidays" | exam queries→use event_name not event_type
 
@@ -124,6 +138,7 @@ EXAMPLES:
 "is lab 11 occupied on Monday at 3:20"→{"intent":"lab","lab_name":"LAB11","is_lab_free_query":true,"day":"Monday","period":"7"}
 "who teaches CNS for 6A and 6B"→{"intent":"subjects","subject":"cryptography and network security","class":null}
 "what are the initials for big data technologies"→{"intent":"subjects","subject":"Big Data Technologies","class":null}
+"what subjects does sujatha take"→{"intent":"subjects","faculty_name":"Sujatha","subject":null,"class":null}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

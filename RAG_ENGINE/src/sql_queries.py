@@ -316,7 +316,7 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
             text = f"On {date}, college is OPEN. It is a compensatory working day: {names}."
         else:
             names = ", ".join(r.get("event_name", "") for r in data)
-            text = f"On {date}, there is an event: {names}. College schedule may vary."
+            text = f"On {date}, there is an event: {names}. College is open"
 
         chunks.append({
             "content": text,
@@ -348,10 +348,10 @@ def format_calendar_chunks(data: list, params: dict = None) -> list:
         has_end = any(re.search(r'\bEnds?\b', n, re.IGNORECASE) for n in original_names)
 
         if len(dates) == 1:
-            if has_start:
-                text = f"'{event_name}' ({event_type}) starts on {dates[0]}."
-            elif has_end:
+            if has_end:
                 text = f"'{event_name}' ({event_type}) ends on {dates[0]}."
+            elif event_type == "vacation" or has_start:
+                text = f"'{event_name}' ({event_type}) starts on {dates[0]}."
             else:
                 text = f"'{event_name}' ({event_type}) is on {dates[0]}."
         else:
@@ -911,30 +911,30 @@ def query_faculty(params: dict) -> list:
     if params.get("faculty_name"):
         name = params["faculty_name"].strip().lower()
     
-    # strip honorifics and titles from both start and end
-    strips = [
-        # honorifics prefix
-        "dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ",
-        "mrs.", "mrs ", "sri ", "shri ",
-        # honorifics suffix / casual address
-        "sir", "mam", "ma'am", "madam", "miss",
-        # designations that might sneak in
-        "professor", "associate professor", "assistant professor",
-        "adjunct professor", "hod", "head", "principal", "dean",
-        "coordinator", "lecturer", "faculty", "teacher", "mentor",
-        # adjectives
-        "respected", "dear", "our", "the",
-    ]
-    
-    for s in strips:
-        name = name.replace(s, "").strip()
-    
-    # remove extra spaces
-    name = " ".join(name.split())
-    
-    if name:
-        query = query.ilike("name", f"%{name}%")
-        filters_applied = True
+        # strip honorifics and titles from both start and end
+        strips = [
+            # honorifics prefix
+            "dr.", "dr ", "prof.", "prof ", "mr.", "mr ", "ms.", "ms ",
+            "mrs.", "mrs ", "sri ", "shri ",
+            # honorifics suffix / casual address
+            "sir", "mam", "ma'am", "madam", "miss",
+            # designations that might sneak in
+            "professor", "associate professor", "assistant professor",
+            "adjunct professor", "hod", "head", "principal", "dean",
+            "coordinator", "lecturer", "faculty", "teacher", "mentor",
+            # adjectives
+            "respected", "dear", "our", "the",
+        ]
+        
+        for s in strips:
+            name = name.replace(s, "").strip()
+        
+        # remove extra spaces
+        name = " ".join(name.split())
+        
+        if name:
+            query = query.ilike("name", f"%{name}%")
+            filters_applied = True
     # Filter by department
     if params.get("department"):
         dept = params["department"].lower()
@@ -946,23 +946,23 @@ def query_faculty(params: dict) -> list:
         filters_applied = True
 
     # Filter by designation
+    # Filter by designation
     if params.get("designation"):
         desig = params["designation"].lower()
         if "hod" in desig or "head" in desig:
-            desig_search = "head"
+            query = query.ilike("designation", f"%head%")
         elif "assistant" in desig or "asst" in desig:
-            desig_search = "assistant professor"
+            query = query.ilike("designation", f"%assistant professor%")
         elif "associate" in desig:
-            desig_search = "associate professor"
+            query = query.ilike("designation", f"%associate professor%")
         elif "adjunct" in desig:
-            desig_search = "adjunct"
+            query = query.ilike("designation", f"%adjunct%")
         elif "prof" in desig:
-            desig_search = "professor"
+            query = query.ilike("designation", f"professor%")  # no % = exact match only
         else:
-            desig_search = desig
-        query = query.ilike("designation", f"%{desig_search}%")
+            query = query.ilike("designation", f"%{desig}%")
         filters_applied = True
-        print("DESIGNATION FILTER USED:", desig_search)  # 👈 inside block
+        print("DESIGNATION FILTER USED:", desig)
 
     # Filter by subject
     if params.get("subject"):
@@ -1446,3 +1446,43 @@ def query_lab_by_keyword(keyword: str) -> list:
         for row in result.data
         if row.get("raw_text")
     ]
+RESPONSE_TEMPLATES = {
+    "email":          "{name}'s email is {value}.",
+    "designation":    "{name} is a {value}.",
+    "department":     "{name} is in the {value} department.",
+    "experience":     "{name} has {value} of experience.",
+    "joining_date":   "{name} joined on {value}.",
+    "google_scholar": "{name}'s Google Scholar profile: {value}",
+    "orcid":          "{name}'s ORCID profile: {value}",
+    "linkedin":       "{name}'s LinkedIn profile: {value}",
+}
+
+def get_faculty_direct_field(faculty_name: str, field: str) -> str | None:
+    """Directly fetch a single field for a faculty — no LLM needed."""
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table("faculty_biodata") \
+            .select(field) \
+            .ilike("name", f"%{faculty_name}%") \
+            .limit(1) \
+            .execute()
+
+        if not result.data:
+            return None
+
+        row = result.data[0]
+        value = row.get(field)
+
+        # Unwrap list → ["https://..."] → "https://..."
+        if isinstance(value, list):
+            value = value[0] if value else None
+
+        if not value:
+            return f"Sorry, {field.replace('_', ' ')} is not available for this faculty."
+
+        full_name = row.get("name", faculty_name)
+        template = RESPONSE_TEMPLATES.get(field, "{name}: {value}")
+        return template.format(name=full_name, value=value)
+
+    except Exception as e:
+        return None

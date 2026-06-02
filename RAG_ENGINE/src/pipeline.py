@@ -3,7 +3,7 @@ from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
 from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
-    format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword
+    format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword, get_faculty_direct_field
 )
 # at top of pipeline.py
 import re
@@ -36,10 +36,22 @@ Use the context below to answer the student's question.
 
 How to format your answer for Faculty queries:
 1. Specific Questions (e.g., "Who is the HOD?", "What is Dr. Smith's email?"): Give a very short, direct answer.
-2. General Inquiries (e.g., "Tell me about the HOD of CSE"): Write a natural 2-3 sentence summary. Include their name, role, years of experience, and a brief mention of their interests or subjects taught. Do not list everything.
+2. General Inquiries (e.g., "Tell me about the HOD of CSE"):
+   Write a natural 2-3 sentence summary using ONLY their full name (never initials or short forms).
+   The summary MUST naturally weave in:
+     - Their full name and designation
+     - Years of experience
+     - Education
+     - Areas of interest
+     - Subjects they teach
+     - Their email address
+   Do not use bullet points or lists. Do not mention or use any short name, initials, or abbreviations for the faculty member.
 3. Detailed Requests (e.g., "Tell me everything about...", "Give in detail..."): Provide a comprehensive, well-formatted profile using bullet points for their experience, research, achievements, and subjects.
 4. Count Queries (e.g., "How many assistant professors?", "How many professors?", "How many HODs?"): Count ONLY the entries explicitly present in the context. Do NOT guess, assume, or add extras. The answer must match exactly the number of entries in the context.
 5. List Queries (e.g., "List all teachers", "List all associate professors"): List ONLY the names explicitly present in the context. Do NOT add any names that are not in the context. Do NOT repeat the same name twice.
+- NEVER say a faculty is HOD unless their designation explicitly contains "Head" or "HOD" in the context
+- NEVER infer or assume a designation — only use what is explicitly stated in the context
+- If designation says "Professor of Practice", say exactly that, not HOD, not Professor
 Rules for Calendar queries:
 -"college fest"-> Anaadyantha
 -"start of sem"->Commencement of classes
@@ -443,7 +455,12 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
     elif intent == "subjects":
         raw_data = query_subjects(parsed)
         chunks = format_subject_chunks(raw_data)
-
+        if not chunks and parsed.get("faculty_name"):
+            return {
+                "query": user_query,
+                "answer": f"{parsed['faculty_name']} do not teach any subjects in the current semester.",
+                "chunks_used": []
+            }
         if "any lab" in user_query.lower():
             chunks = [c for c in chunks if "lab" in c["content"].lower().split("(code:")[0]]
             if not chunks:
@@ -451,23 +468,61 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
 
     elif intent == "calendar":
         chunks = retrieve_chunks(parsed)
-
     elif intent == "faculty":
         print("PARAMS SENT TO QUERY_FACULTY:", parsed)
+        if parsed.get("direct_field") and parsed.get("faculty_name"):
+            direct_answer = get_faculty_direct_field(
+                faculty_name=parsed["faculty_name"],
+                field=parsed["direct_field"]
+            )
+            if direct_answer:
+                return {
+                    "query": user_query,
+                    "answer": direct_answer,
+                    "chunks_used": []
+                }
+
         raw_data = query_faculty(parsed)
         is_compact = parsed.get("is_list_query", False) or parsed.get("query_type") == "count"
         chunks = format_faculty_chunks(raw_data, compact=is_compact)
+
+        # ── COUNT query: count directly from SQL, never let LLM count ──
         if parsed.get("query_type") == "count":
             exact_count = len(raw_data)
-            designation = parsed.get("designation", "faculty")
-            # fix grammar for singular
-            label = f"{designation}s" if exact_count != 1 else designation  
+            designation = parsed.get("designation", "").strip()
+            department  = parsed.get("department", "").strip()
+
+            label = (designation if exact_count == 1 else designation + "s") if designation \
+                    else ("faculty member" if exact_count == 1 else "faculty members")
+
+            dept_suffix = f" in the {department.upper() if len(department) <= 4 else department.title()} department" \
+                        if department else ""
+
             return {
                 "query": user_query,
-                "answer": f"There are {exact_count} {label} in the CSE department.",
+                "answer": f"There are {exact_count} {label}{dept_suffix}.",
                 "chunks_used": chunks,
             }
-        
+
+        # ── LIST query: build answer in Python, never let LLM count ──
+        if parsed.get("is_list_query"):
+            exact_count = len(raw_data)
+            designation = (parsed.get("designation") or "").strip()
+            department = (parsed.get("department") or "").strip()
+
+            label = (designation + "s") if designation else "faculty members"
+
+            dept_suffix = f" in the {department.upper() if len(department) <= 4 else department.title()} department" \
+                        if department else ""
+
+            names = "\n".join(f"{i+1}. {r['name']}" for i, r in enumerate(raw_data))
+            answer = f"There are {exact_count} {label}{dept_suffix}:\n{names}"
+
+            return {
+                "query": user_query,
+                "answer": answer,
+                "chunks_used": chunks,
+            }
     elif intent == "lab":
         lab_query_type = parsed.get("lab_query_type")
         free_keywords = ["free", "occupied", "available", "busy"]
