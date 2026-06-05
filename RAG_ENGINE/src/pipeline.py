@@ -3,7 +3,7 @@ from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
 from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
-    format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword, get_faculty_direct_field
+    format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword, get_faculty_direct_field,query_class_teacher
 )
 # at top of pipeline.py
 import re
@@ -453,18 +453,41 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
                 chunks = format_timetable_chunks_v2(raw_data)
 
     elif intent == "subjects":
-        raw_data = query_subjects(parsed)
-        chunks = format_subject_chunks(raw_data)
-        if not chunks and parsed.get("faculty_name"):
-            return {
-                "query": user_query,
-                "answer": f"{parsed['faculty_name']} do not teach any subjects in the current semester.",
-                "chunks_used": []
-            }
-        if "any lab" in user_query.lower():
-            chunks = [c for c in chunks if "lab" in c["content"].lower().split("(code:")[0]]
+        if parsed.get("is_class_teacher_query"):
+            chunks = query_class_teacher(parsed)
             if not chunks:
-                return {"query": user_query, "answer": f"No, {parsed.get('faculty_name', 'this faculty')} does not teach any lab.", "chunks_used": []}
+                cls = parsed.get("class", "this class")
+                return {
+                    "query": user_query,
+                    "answer": f"No class teacher has been assigned for {cls} yet.",
+                    "chunks_used": []
+                }
+            teach_keywords = ["teach", "take", "handle", "subject", "which subject", "what subject"]
+            if any(kw in user_query.lower() for kw in teach_keywords):
+                ct_chunk = chunks[0]["content"]  # "The class teacher of 6A is Dr. Xyz."
+                faculty_name = ct_chunk.split(" is ")[-1].rstrip(".")
+                subject_params = {**parsed, "faculty_name": faculty_name, "class": None}
+                raw_data = query_subjects(subject_params)
+                chunks = format_subject_chunks(raw_data)
+                if not chunks:
+                    return {
+                        "query": user_query,
+                        "answer": f"{faculty_name} does not teach any subjects in the current semester.",
+                        "chunks_used": []
+                    }
+        else:
+            raw_data = query_subjects(parsed)
+            chunks = format_subject_chunks(raw_data)
+            if not chunks and parsed.get("faculty_name"):
+                return {
+                    "query": user_query,
+                    "answer": f"{parsed['faculty_name']} do not teach any subjects in the current semester.",
+                    "chunks_used": []
+                }
+            if "any lab" in user_query.lower():
+                chunks = [c for c in chunks if "lab" in c["content"].lower().split("(code:")[0]]
+                if not chunks:
+                    return {"query": user_query, "answer": f"No, {parsed.get('faculty_name', 'this faculty')} does not teach any lab.", "chunks_used": []}
 
     elif intent == "calendar":
         chunks = retrieve_chunks(parsed)

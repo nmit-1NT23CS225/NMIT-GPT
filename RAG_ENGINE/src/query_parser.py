@@ -22,7 +22,8 @@ OUTPUT SCHEMA:
     "faculty_timetable_query": true | false,    ← "what does Dr. X teach this week"
     "full_day_query": true | false,             ← "what's the schedule for 6A on Monday"
     "subject_schedule_query": true | false,     ← "when is DBMS for 6A?"
-    "direct_field": "email"|"designation"|"department"|"experience"|"joining_date"|"google_scholar"|"orcid"|"linkedin"|null}
+    "direct_field": "email"|"designation"|"department"|"experience"|"joining_date"|"google_scholar"|"orcid"|"linkedin"|null,
+    "is_class_teacher_query": false}
 
 INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
 
@@ -58,6 +59,7 @@ SUBJECT RULES:
 - Lab subject queries grouped by batch: "6A-A1: [faculty], 6A-A2: [faculty1] and [faculty2], 6A-A3: [faculty1] and [faculty2]
 - "what subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null
 - "which subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null"
+- "class teacher of 6D" / "who is class teacher" / "class incharge of 6D/ "class teacher of 6th sem D sec"/ "class teacher of 6th sem D section"" → intent:subjects, is_class_teacher_query:true, class:"6D"
 
 FACULTY RULES:
 - Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"

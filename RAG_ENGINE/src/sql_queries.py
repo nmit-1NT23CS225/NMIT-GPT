@@ -1486,3 +1486,26 @@ def get_faculty_direct_field(faculty_name: str, field: str) -> str | None:
 
     except Exception as e:
         return None
+def query_class_teacher(params: dict) -> list:
+    supabase = get_supabase_client()
+
+    query = supabase.table("subjects") \
+        .select("subject_name, class, faculty_biodata(name, designation)") \
+        .eq("is_class_teacher", True)
+
+    if params.get("class"):
+        query = query.eq("class", params["class"])
+
+    rows = query.execute().data
+
+    chunks = []
+    for row in rows:
+        faculty = row.get("faculty_biodata") or {}
+        name = faculty.get("name", "Unknown")
+        cls = row.get("class", "")
+        chunks.append({
+            "content": f"The class teacher of {cls} is {name}.",
+            "metadata": {"source_type": "subjects"},
+            "similarity": 1.0
+        })
+    return chunks
