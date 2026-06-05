@@ -55,7 +55,8 @@ SUBJECT RULES:
 - "aiml lab","ai ml lab"→subject:"AI and ML Lab"
 - "how many subjects"→is_list_query:false
 - "which lab/lab number/what lab for [subject] [class]" → intent:subjects, not intent:lab
-- "aiml lab"/"ai ml lab" queries with a class → intent:subjects, subject:"AI and ML Lab"
+- "aiml lab"/"ai ml lab" queries with a class → intent:subjects, subject:"AI and ML Lab" 
+- "aiml"/"ai ml" without "lab"→subject:"Artificial Intelligence and Machine Learning"; with "lab"→subject:"AI and ML Lab"
 - Lab subject queries grouped by batch: "6A-A1: [faculty], 6A-A2: [faculty1] and [faculty2], 6A-A3: [faculty1] and [faculty2]
 - "what subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null
 - "which subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null"
