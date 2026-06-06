@@ -34,7 +34,8 @@ TIMETABLE SUB-TYPES:
 - "when is DBMS for 6A" / "which period is OS" → subject_schedule_query: true, subject: "expanded name", class: "6A"
 - "what is happening on Friday period 3" (no class given) → day: "Friday", period: "3", class: null
 - "initials/short form/abbreviation for X"→intent:subjects, subject:X
-
+- "Give today's timetable for 6D"->intent:timetable, date:yyyy-mm-dd,day:today's day,class:6D,full_day_query:True
+"what is the timetable of 6D on friday"→{"intent":"timetable","class":"6D","day":"Friday","full_day_query":true}
 
 SUBJECT ABBREVIATIONS (expand always):
 DBMS→database management system, OS→operating system, CN→computer networks, DS→data structures, DAA→design and analysis of algorithms, OOP/OOPS→object oriented programming, SE→software engineering, CD→compiler design, TOC→theory of computation, AI→artificial intelligence, ML→machine learning, DM→data mining, BDT→big data technologies, ASD→agile software development, ACA→advanced computer architecture, GT→game theory, PPL→placement practice lab, ARVR/VRAR/virtual reality and augmented reality/virtual reality & augmented reality→"Virtual Reality & Augmented Reality", HPC→high performance computing, CNS→cryptography and network security

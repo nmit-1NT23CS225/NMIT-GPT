@@ -60,6 +60,8 @@ Rules for Calendar queries:
 - "when does X end" → find the latest date for X
 - "when is X" → give the full date range
 - If the calendar has no events for a date → college is open as usual on that day
+- If context contains an event that "starts on X and ends on Y" and today's date falls between X and Y → that event IS happening today, mention it explicitly
+- If an exam event is ongoing today → say "SEE Practicals / SEE Theory / MSE is ongoing today (X to Y)" — NEVER say "open as usual" if an exam is ongoing
 - If it is a holiday → college is CLOSED
 - If it is a compensatory working day → college is OPEN
 - Convert YYYY-MM-DD dates to readable format like "May 13, 2026"
@@ -90,6 +92,11 @@ Rules for Calendar queries:
 - "when is X" → give the full date range
   Example: "June 12, 2026 to July 3, 2026"
 - Never repeat the date twice in the same answer
+**CRITICAL — EXAM OVERRIDE RULE:
+- BEFORE answering any timetable query, check if any calendar context chunk mentions an ongoing exam (SEE, MSE, Practicals).
+- If an exam is ongoing on the queried date → respond ONLY with:
+  "No classes on [date] — [Exam Name] is ongoing ([start date] to [end date])."
+- NEVER list periods or subjects if an exam is ongoing. Exams override the timetable completely.
 CRITICAL — NEVER DO YOUR OWN DATE MATH:
 - The context chunks already contain the EXACT pre-calculated answer from the database.
 - For gap queries: use the number from the chunk "The gap between X and Y is N working days."
@@ -214,30 +221,36 @@ If the answer is not found in the context, say: "Information not available."
 def format_timetable_chunks(data: list) -> list:
     chunks = []
 
-    # sort by time slot so periods are in order
     def time_sort_key(row):
-        slot = row.get("time_slot", "")
-        return slot  # "09:00-09:55" sorts correctly as string
+        return row.get("time_slot", "")
 
     sorted_data = sorted(data, key=time_sort_key)
 
     for row in sorted_data:
         subject = row.get("subject_info") or {}
         faculty = subject.get("faculty_biodata") or {}
+        is_lab = row.get("is_lab", False)
 
-        subject_name = subject.get("subject_name")
+        subject_name = (
+            subject.get("subject_name")
+            or row.get("subject_code")
+        )
         faculty_name = faculty.get("name")
 
-        # skip completely unknown rows
         if not subject_name and not faculty_name:
             continue
 
+        session_type = "Lab session" if is_lab else "Lecture"
+
         text = (
-            f"Period {row.get('time_slot')}: "
+            f"Period {row.get('time_slot')} ({session_type}): "
             f"{subject_name or 'unknown subject'} "
-            f"taught by {faculty_name or 'unknown faculty'} "
             f"(Day: {row.get('day_of_week')}, Class: {row.get('class')})."
         )
+
+        if not is_lab and faculty_name:
+            text = text.rstrip(".") + f", taught by {faculty_name}."
+
         chunks.append({
             "content": text,
             "metadata": {"source_type": "timetable"},
@@ -421,7 +434,13 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
                 format_timetable_chunks_v2,
                 format_free_period_chunks,
             )
-
+            if parsed.get("date"):
+                exam_chunks = retrieve_chunks({"intent": "calendar", "date": parsed["date"]})
+                exam_chunks = [c for c in exam_chunks if "exam" in c.get("content", "").lower()]
+                if exam_chunks:
+                    prompt = build_prompt(user_query, exam_chunks, params=parsed)
+                    answer = generate_llm_answer(prompt, chat_history=chat_history)
+                    return {"query": user_query, "answer": answer, "chunks_used": exam_chunks}
             # ── Free period query ──────────────────────────────────
             if parsed.get("free_period_query") and parsed.get("class") and parsed.get("day"):
                 free_slots = query_free_periods(parsed["class"], parsed["day"])
@@ -512,8 +531,8 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         # ── COUNT query: count directly from SQL, never let LLM count ──
         if parsed.get("query_type") == "count":
             exact_count = len(raw_data)
-            designation = parsed.get("designation", "").strip()
-            department  = parsed.get("department", "").strip()
+            designation = (parsed.get("designation") or "").strip()
+            department  = (parsed.get("department") or "").strip()
 
             label = (designation if exact_count == 1 else designation + "s") if designation \
                     else ("faculty member" if exact_count == 1 else "faculty members")

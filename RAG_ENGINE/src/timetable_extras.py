@@ -5,35 +5,49 @@ from .sql_queries import TIME_SLOT_MAP, resolve_time_slot   # reuse existing map
 # 1. Full day schedule for a class
 # ──────────────────────────────────────────────────────────────
 def query_full_day_timetable(class_name: str, day: str) -> list:
-    """
-    Return every period's schedule for a given class on a given day,
-    sorted by time slot, with subject + faculty info merged in.
-
-    Usage in answer_query():
-        params["intent"] == "timetable"
-        AND params.get("class") AND params.get("day")
-        AND NOT params.get("period")          ← whole-day query
-    """
     supabase = get_supabase_client()
 
     rows = (
         supabase.table("timetable")
         .select("*")
-        .eq("class", class_name)
+        .like("class", f"{class_name}%")
         .eq("day_of_week", day)
         .execute()
         .data
     )
+    print("RAW ROWS FROM DB:", [(r["class"], r["time_slot"], r["subject_code"]) for r in rows])  # ADD THIS
     if not rows:
         return []
 
-    # sort by slot start time
+    # ── Deduplicate batch rows (6D-D1, 6D-D2, 6D-D3) into one row per time slot ──
+    # For lab batches, keep only one representative row and set class to the base class
+    seen_slots = {}
+    deduped = []
+    for row in rows:
+        slot = row["time_slot"]
+        is_batch = row["class"] != class_name  # e.g. "6D-D1" != "6D"
+        if is_batch:
+            if slot not in seen_slots:
+                row = {**row, "class": class_name}  # normalize class to "6D"
+                seen_slots[slot] = True
+                deduped.append(row)
+            # else skip — already have this slot from another batch
+        else:
+            deduped.append(row)
+    rows = deduped
+
+    # sort by slot
     SLOT_ORDER = list(TIME_SLOT_MAP.values())
     rows.sort(key=lambda r: SLOT_ORDER.index(r["time_slot"]) if r["time_slot"] in SLOT_ORDER else 99)
 
     # enrich with subject + faculty
-    subject_codes = list({r["subject_code"] for r in rows if r.get("subject_code")})
-    subj_map = {}
+    subject_codes = list({
+        r["subject_code"] for r in rows
+        if r.get("subject_code") and r["subject_code"].strip()  # skip "" and None
+    })
+
+    subj_map_exact = {}
+    subj_map_code = {}
     if subject_codes:
         subj_rows = (
             supabase.table("subjects")
@@ -43,16 +57,19 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
             .data
         )
         for s in subj_rows:
-            # key = (subject_code, class) to avoid cross-class conflicts
-            subj_map[(s["subject_code"], s["class"])] = s
+            subj_map_exact[(s["subject_code"], s["class"])] = s
+            if s["subject_code"] not in subj_map_code:
+                subj_map_code[s["subject_code"]] = s
 
     for row in rows:
-        row["subject_info"] = subj_map.get(
-            (row.get("subject_code"), row.get("class")), {}
+        code = row.get("subject_code") or ""
+        cls = row.get("class")
+        row["subject_info"] = (
+            subj_map_exact.get((code, cls))
+            or subj_map_code.get(code)
+            or {}
         )
     return rows
-
-
 # ──────────────────────────────────────────────────────────────
 # 2. Faculty timetable — all periods a faculty teaches
 # ──────────────────────────────────────────────────────────────
@@ -273,30 +290,37 @@ def query_class_at_period(day: str, period: str) -> list:
 # 6. Richer chunk formatter (drop-in replacement for format_timetable_chunks)
 # ──────────────────────────────────────────────────────────────
 def format_timetable_chunks_v2(data: list) -> list:
-    """
-    Formats timetable rows into natural-language chunks.
-    - Includes is_lab flag ("Lab session" vs "Lecture")
-    - Includes activity field when present
-    - Used for all timetable intents
-    """
     chunks = []
     for row in data:
         subject = row.get("subject_info") or {}
         faculty = subject.get("faculty_biodata") or {}
-        session_type = "Lab session" if row.get("is_lab") else "Lecture"
-        activity = row.get("activity", "")
+        is_lab = row.get("is_lab", False)
+        session_type = "Lab session" if is_lab else "Lecture"
+        activity = row.get("activity") or ""
+
+        subject_name = (
+            subject.get("subject_name")
+            or ((row.get("subject_code") or "").strip() or None)
+            or activity  # e.g. "Placement Training", "Elective"
+            or "unknown subject"
+        )
 
         text = (
             f"On {row.get('day_of_week')}, "
             f"class {row.get('class')} has a {session_type} — "
-            f"{subject.get('subject_name', row.get('subject_code', 'unknown subject'))} "
-            f"during {row.get('time_slot')}, "
-            f"taught by {faculty.get('name', 'unknown faculty')}."
+            f"{subject_name} "
+            f"during {row.get('time_slot')}."
         )
-        if activity:
-            text += f" Activity: {activity}."
-        if row.get("is_lab") and row.get("lab_id"):
-            text += f" Lab ID: {row['lab_id']}."
+
+        if not is_lab:
+            faculty_name = faculty.get("name")
+            if faculty_name:
+                text = text.rstrip(".") + f", taught by {faculty_name}."
+
+        if activity and activity != subject_name:
+            text = text.rstrip(".") + f" Activity: {activity}."
+        if is_lab and row.get("lab_id"):
+            text = text.rstrip(".") + f" Lab ID: {row['lab_id']}."
 
         chunks.append({
             "content": text,
@@ -304,7 +328,6 @@ def format_timetable_chunks_v2(data: list) -> list:
             "similarity": 1.0,
         })
     return chunks
-
 
 def format_free_period_chunks(free_slots: list, class_name: str, day: str) -> list:
     """Format free-period results into LLM-readable chunks."""

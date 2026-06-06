@@ -266,35 +266,70 @@ def query_calendar(params: dict) -> list:
 
     if params.get("event_name"):
         query = query.ilike("event_name", f"%{params['event_name']}%")
+        query = query.order("event_date", desc=False)
+        return query.execute().data
 
-    else:
-        if params.get("date"):
-            query = query.eq("event_date", params["date"])
-            # don't filter by event_type for specific date queries
-            # fetch everything on that date and let LLM reason
+    if params.get("date"):
+        target_date = params["date"]
 
-        elif params.get("month"):
-            month = params["month"]
-            year, mon = month.split("-")
-            last_day = cal_module.monthrange(int(year), int(mon))[1]
-            query = query.gte("event_date", f"{month}-01").lte("event_date", f"{month}-{last_day:02d}")
-            # apply event_type filter only for month queries
-            if params.get("event_type"):
-                normalized = normalize_event_type(params["event_type"])
-                if normalized:
-                    query = query.ilike("event_type", f"%{normalized}%")
+        exact_rows = supabase.table("academic_calendar").select("*") \
+            .eq("event_date", target_date).execute().data
 
-        elif params.get("date_from") and params.get("date_to"):
-            query = query.gte("event_date", params["date_from"]).lte("event_date", params["date_to"])
-            if params.get("event_type"):
-                normalized = normalize_event_type(params["event_type"])
-                if normalized:
-                    query = query.ilike("event_type", f"%{normalized}%")
+        all_rows = supabase.table("academic_calendar").select("*") \
+            .lte("event_date", target_date).execute().data
+
+        started = {}
+        for row in all_rows:
+            name = row.get("event_name", "")
+            if re.search(r'\bStarts?\b', name, re.IGNORECASE):
+                base = re.sub(r'\s*(Starts?)$', '', name, flags=re.IGNORECASE).strip()
+                started[base] = row
+
+        spanning_rows = []
+        if started:
+            end_rows = supabase.table("academic_calendar").select("*") \
+                .gte("event_date", target_date).execute().data
+
+            ended_names = {}
+            for row in end_rows:
+                name = row.get("event_name", "")
+                if re.search(r'\bEnds?\b', name, re.IGNORECASE):
+                    base = re.sub(r'\s*(Ends?)$', '', name, flags=re.IGNORECASE).strip()
+                    ended_names[base] = row  # store the row, not just the name
+
+            for base_name, start_row in started.items():
+                if base_name in ended_names:
+                    spanning_rows.append(start_row)
+                    spanning_rows.append(ended_names[base_name])  # ADD the Ends row too
+
+        seen = set()
+        combined = []
+        for row in exact_rows + spanning_rows:
+            if row["event_name"] not in seen:
+                seen.add(row["event_name"])
+                combined.append(row)
+
+        return combined
+
+    elif params.get("month"):
+        month = params["month"]
+        year, mon = month.split("-")
+        last_day = cal_module.monthrange(int(year), int(mon))[1]
+        query = query.gte("event_date", f"{month}-01").lte("event_date", f"{month}-{last_day:02d}")
+        if params.get("event_type"):
+            normalized = normalize_event_type(params["event_type"])
+            if normalized:
+                query = query.ilike("event_type", f"%{normalized}%")
+
+    elif params.get("date_from") and params.get("date_to"):
+        query = query.gte("event_date", params["date_from"]).lte("event_date", params["date_to"])
+        if params.get("event_type"):
+            normalized = normalize_event_type(params["event_type"])
+            if normalized:
+                query = query.ilike("event_type", f"%{normalized}%")
 
     query = query.order("event_date", desc=False)
     return query.execute().data
-
-
 
 def format_calendar_chunks(data: list, params: dict = None) -> list:
     if not data:
@@ -977,7 +1012,6 @@ def query_faculty(params: dict) -> list:
         filters_applied = True
     result = query.execute().data
     print("RESULT COUNT:", len(result))
-
     # FALLBACK
     if not result:
         result = supabase.table("faculty_biodata").select("""
