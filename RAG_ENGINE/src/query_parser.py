@@ -1,4 +1,4 @@
-from .llm_interface import MODEL
+from .llm_interface import parser_client, MODEL
 from .db import get_supabase_client
 from groq import Groq
 from dotenv import load_dotenv
@@ -151,6 +151,9 @@ EXAMPLES:
 "who teaches CNS for 6A and 6B"→{"intent":"subjects","subject":"cryptography and network security","class":null}
 "what are the initials for big data technologies"→{"intent":"subjects","subject":"Big Data Technologies","class":null}
 "what subjects does sujatha take"→{"intent":"subjects","faculty_name":"Sujatha","subject":null,"class":null}
+"what is the lab number for 6D batch 3" → {"intent":"subjects","class":"6D-D3","subject":null,"is_class_teacher_query":false}
+"which lab does 6D batch 2 use" → {"intent":"subjects","class":"6D-D2","subject":null}
+"lab number for 5A batch 1" → {"intent":"subjects","class":"5A-A1","subject":null}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

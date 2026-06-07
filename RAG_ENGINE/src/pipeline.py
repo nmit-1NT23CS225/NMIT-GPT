@@ -225,7 +225,15 @@ Rules for Subject queries:
 - "does X teach any lab?" → scan each chunk's subject name for the word "Lab" — if NONE contain "Lab" → answer "No, [faculty name] does not teach any lab subject" — NEVER say Yes unless a chunk explicitly has "Lab" in the subject name
 - When the user asks for a "lab number" or "which lab", extract the Lab name and room number from the chunk, NOT the subject code.
 - Example: "Lab: Computer Lab-1 (Room 120) in room 120" → answer "Computer Lab-1 in room 120"
-
+- "who takes [lab] for [class]" → list ALL faculty from context, grouped by batch
+- NEVER skip any faculty name — if context has 6 entries, list all 6
+- NEVER use "respectively" for lab batch queries
+- Format EXACTLY like this:
+  6D-D1: [faculty1] and [faculty2] — [Lab Name] (Room X)
+  6D-D2: [faculty1] and [faculty2] — [Lab Name] (Room X)
+  6D-D3: [faculty1] and [faculty2] — [Lab Name] (Room X)
+- Count the chunks before answering — if there are 6 chunks, there are 6 faculty names to include
+- NEVER merge or combine faculty across batches
 If the answer is not found in the context, say: "Information not available."
 
 [Context]
