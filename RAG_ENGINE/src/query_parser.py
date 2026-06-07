@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 import json
 PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
-GROQ_PARSER_KEY = os.getenv("GROQ_PARSER_KEY")
+GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
 if not GROQ_PARSER_KEY:
     raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
 
@@ -33,7 +33,7 @@ OUTPUT SCHEMA:
     "direct_field": "email"|"designation"|"department"|"experience"|"joining_date"|"google_scholar"|"orcid"|"linkedin"|null,
     "is_class_teacher_query": false}
 
-INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
+INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes/list who teaches subject | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
 
 TIMETABLE SUB-TYPES:
 - "schedule of 6A on Monday" / "what does 6A have on Tuesday" → full_day_query: true, class: "6A", day: "Monday"
@@ -70,6 +70,7 @@ SUBJECT RULES:
 - "what subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null
 - "which subjects does X take/teach/handle" → intent:subjects, faculty_name:"X", subject:null"
 - "class teacher of 6D" / "who is class teacher" / "class incharge of 6D/ "class teacher of 6th sem D sec"/ "class teacher of 6th sem D section"" → intent:subjects, is_class_teacher_query:true, class:"6D"
+- "list faculties who take/teach [subject]" → intent:subjects
 
 FACULTY RULES:
 - Strip honorifics: Dr./Prof./Mr./Mrs./Ms./Sir/Mam/Ma'am → "Dr. Vijaya Shetty"→"Vijaya Shetty", "Deepthi mam"→"Deepthi"
@@ -106,6 +107,8 @@ CALENDAR RULES:
 - "summer vacation duration/how long is summer vacation"→query_type:"gap", event_name:"Summer Vacations", event_name_2:"Registration Odd (5th & 7th) Semester"
 - Strip "Starts"/"Ends" from event_name always
 -"Unless explicitly labeled as an end date, all dates in the database represent the start date of the event or vacation period."
+- "co curricular activity 1/2/first/second" → event_type:"co_curricular", event_name:null, is_list_query:false — never guess the event_name from ordinals
+- Only set event_name when user explicitly says the event's actual name (e.g. "Anaadyanta", "MSE-1")
 
 EVENT NAMES: mse1/mse-1/mid sem 1→"Mid-Semester Exam 1" | mse2→"Mid-Semester Exam 2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
 
@@ -154,6 +157,8 @@ EXAMPLES:
 "what is the lab number for 6D batch 3" → {"intent":"subjects","class":"6D-D3","subject":null,"is_class_teacher_query":false}
 "which lab does 6D batch 2 use" → {"intent":"subjects","class":"6D-D2","subject":null}
 "lab number for 5A batch 1" → {"intent":"subjects","class":"5A-A1","subject":null}
+"who handles game theory"→{"intent":"subjects","subject":"Game Theory","class":null}
+"list faculties who take AIML" → {intent:subjects}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
