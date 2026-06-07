@@ -176,6 +176,7 @@ STRICT RULES (VERY IMPORTANT):
 **Rules for Timetable queries:
 - When showing a full day timetable, list ALL periods in time order
 - Format each period as: "Period <time>: <subject> by <faculty>"
+- If faculty not present then do not mention it in the answer. 
 - Never skip any period
 - If asked for a specific day, only show that day's periods
 - Present as a numbered list when showing full day schedule
