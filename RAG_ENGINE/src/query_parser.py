@@ -159,6 +159,7 @@ EXAMPLES:
 "lab number for 5A batch 1" → {"intent":"subjects","class":"5A-A1","subject":null}
 "who handles game theory"→{"intent":"subjects","subject":"Game Theory","class":null}
 "list faculties who take AIML" → {intent:subjects}
+"List the teacher who takes BDT"->{intent:subjects}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
