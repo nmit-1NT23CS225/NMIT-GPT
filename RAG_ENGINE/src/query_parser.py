@@ -1,7 +1,15 @@
-from .llm_interface import client, MODEL
+from .llm_interface import MODEL
 from .db import get_supabase_client
+from groq import Groq
+from dotenv import load_dotenv
+import os
 import json
-PARSER_MODEL = "llama-3.1-8b-instant"
+PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
+GROQ_PARSER_KEY = os.getenv("GROQ_PARSER_KEY")
+if not GROQ_PARSER_KEY:
+    raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
+
+parser_client = Groq(api_key=GROQ_PARSER_KEY)
 # fetch once at startup, reuse for all queries
 def _load_event_names() -> list:
     try:
@@ -160,7 +168,7 @@ def parse_query(user_query: str, chat_history: list = None) -> dict:
 
     user_content = f"Recent conversation:\n{history_context}\nCurrent query: {user_query}" if history_context else user_query
 
-    response = client.chat.completions.create(
+    response = parser_client.chat.completions.create(
         model=PARSER_MODEL,
         max_tokens=300,
         messages=[
