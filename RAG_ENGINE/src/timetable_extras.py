@@ -1,9 +1,7 @@
 from .db import get_supabase_client
-from .sql_queries import TIME_SLOT_MAP, resolve_time_slot   # reuse existing maps
+from .sql_queries import TIME_SLOT_MAP, resolve_time_slot  
 
-# ──────────────────────────────────────────────────────────────
 # 1. Full day schedule for a class
-# ──────────────────────────────────────────────────────────────
 def query_full_day_timetable(class_name: str, day: str) -> list:
     supabase = get_supabase_client()
 
@@ -15,7 +13,7 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
         .execute()
         .data
     )
-    print("RAW ROWS FROM DB:", [(r["class"], r["time_slot"], r["subject_code"]) for r in rows])  # ADD THIS
+    print("RAW ROWS FROM DB:", [(r["class"], r["time_slot"], r["subject_code"]) for r in rows])  
     if not rows:
         return []
 
@@ -25,25 +23,22 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
     deduped = []
     for row in rows:
         slot = row["time_slot"]
-        is_batch = row["class"] != class_name  # e.g. "6D-D1" != "6D"
+        is_batch = row["class"] != class_name  
         if is_batch:
             if slot not in seen_slots:
-                row = {**row, "class": class_name}  # normalize class to "6D"
+                row = {**row, "class": class_name}  
                 seen_slots[slot] = True
                 deduped.append(row)
-            # else skip — already have this slot from another batch
         else:
             deduped.append(row)
     rows = deduped
 
-    # sort by slot
     SLOT_ORDER = list(TIME_SLOT_MAP.values())
     rows.sort(key=lambda r: SLOT_ORDER.index(r["time_slot"]) if r["time_slot"] in SLOT_ORDER else 99)
 
-    # enrich with subject + faculty
     subject_codes = list({
         r["subject_code"] for r in rows
-        if r.get("subject_code") and r["subject_code"].strip()  # skip "" and None
+        if r.get("subject_code") and r["subject_code"].strip() 
     })
 
     subj_map_exact = {}
@@ -70,9 +65,7 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
             or {}
         )
     return rows
-# ──────────────────────────────────────────────────────────────
 # 2. Faculty timetable — all periods a faculty teaches
-# ──────────────────────────────────────────────────────────────
 def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
     """
     Return all timetable entries for a specific faculty member,
@@ -103,7 +96,7 @@ def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
         return []
 
     faculty_ids = [f["faculty_id"] for f in faculty_rows]
-    faculty_name_resolved = faculty_rows[0]["name"]  # for display
+    faculty_name_resolved = faculty_rows[0]["name"]  
 
     # Step 2: get subject_codes taught by this faculty
     subj_query = (
@@ -135,7 +128,6 @@ def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
         info = subj_map.get((row.get("subject_code"), row.get("class")), {})
         row["subject_info"] = {**info, "faculty_biodata": {"name": faculty_name_resolved}}
 
-    # sort by day then slot
     DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     SLOT_ORDER = list(TIME_SLOT_MAP.values())
     tt_rows.sort(key=lambda r: (
@@ -145,9 +137,7 @@ def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
     return tt_rows
 
 
-# ──────────────────────────────────────────────────────────────
 # 3. Free periods for a class on a day
-# ──────────────────────────────────────────────────────────────
 def query_free_periods(class_name: str, day: str) -> list:
     """
     Return which time slots are FREE (no entry in timetable) for
@@ -187,9 +177,7 @@ def query_free_periods(class_name: str, day: str) -> list:
     ]
 
 
-# ──────────────────────────────────────────────────────────────
 # 4. Subject schedule — when & where a subject is taught
-# ──────────────────────────────────────────────────────────────
 def query_subject_schedule(subject: str, class_name: str = None) -> list:
     """
     Return all timetable slots for a given subject (by name or code),
@@ -240,9 +228,8 @@ def query_subject_schedule(subject: str, class_name: str = None) -> list:
     return tt_rows
 
 
-# ──────────────────────────────────────────────────────────────
+
 # 5. What is every class doing at a given day + time?
-# ──────────────────────────────────────────────────────────────
 def query_class_at_period(day: str, period: str) -> list:
     """
     Return what ALL classes are doing at a specific day + time slot.
@@ -286,9 +273,8 @@ def query_class_at_period(day: str, period: str) -> list:
     return rows
 
 
-# ──────────────────────────────────────────────────────────────
+
 # 6. Richer chunk formatter (drop-in replacement for format_timetable_chunks)
-# ──────────────────────────────────────────────────────────────
 def format_timetable_chunks_v2(data: list) -> list:
     chunks = []
     for row in data:
@@ -301,7 +287,7 @@ def format_timetable_chunks_v2(data: list) -> list:
         subject_name = (
             subject.get("subject_name")
             or ((row.get("subject_code") or "").strip() or None)
-            or activity  # e.g. "Placement Training", "Elective"
+            or activity 
             or "unknown subject"
         )
 
