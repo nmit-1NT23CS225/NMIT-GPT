@@ -4,7 +4,6 @@ from backend.routes.auth import admin_required
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 def process_excel(file_path: str):
-    # Implement Excel parsing + chunking + embeddings here
     pass
 
 @router.post("/upload/biodata-excel", dependencies=[admin_required()])
