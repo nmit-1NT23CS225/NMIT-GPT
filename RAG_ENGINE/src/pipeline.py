@@ -5,7 +5,7 @@ from .sql_queries import (
     query_timetable, query_subjects, query_calendar, query_faculty,
     format_calendar_chunks, format_faculty_chunks,retrieve_chunks, query_lab, format_lab_chunks, query_lab_embeddings, query_lab_availability, query_lab_by_keyword, get_faculty_direct_field,query_class_teacher
 )
-# at top of pipeline.py
+
 import re
 import time
 from datetime import datetime, timedelta
@@ -17,7 +17,7 @@ def build_prompt(user_query: str, chunks: list, params: dict = None) -> str:
             continue
         context_lines.append(content)
 
-    # if no chunks, tell LLM the calendar has no entry for that date
+    
     if not context_lines and params and params.get("date"):
         context_lines.append(f"The academic calendar has no recorded events for {params['date']}.")
 
@@ -309,15 +309,14 @@ def format_subject_chunks(data: list) -> list:
     return chunks
 
 
-# ── Period / day names used throughout ────────────────────────────────────────
 _DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _SLOT_TO_PERIOD = {
     "09:00-09:55": "1", "10:05-11:00": "2", "11:00-11:55": "3",
     "12:35-01:30": "4", "01:30-02:25": "5", "02:25-03:20": "6", "03:20-04:15": "7",
 }
-# College sessions split by time (used for "morning" / "afternoon")
-_MORNING_PERIODS   = ["1", "2", "3"]       # 09:00 – 11:55
-_AFTERNOON_PERIODS = ["4", "5", "6", "7"]  # 12:35 – 04:15
+
+_MORNING_PERIODS   = ["1", "2", "3"]       
+_AFTERNOON_PERIODS = ["4", "5", "6", "7"]  
 
 
 def _day_name(dt) -> str:
@@ -359,18 +358,18 @@ def _inject_temporal_context(query: str) -> str:
     period number so the parser never has to do arithmetic.
     """
     from .sql_queries import resolve_time_slot
-    q = query          # we will augment this string
+    q = query         
     ql = query.lower()
     now = datetime.now()
     today     = now.date()
 
-    def _fmt(d) -> str:          # date → "YYYY-MM-DD"
+    def _fmt(d) -> str:          
         return d.strftime("%Y-%m-%d")
 
-    def _dname(d) -> str:        # date → "Monday" …
+    def _dname(d) -> str:        
         return _DAYS[d.weekday()]
 
-    # ── 1. now / currently / right now ────────────────────────────────────────
+    # now / currently / right now 
     NOW_WORDS = ["now", "current period", "currently", "ongoing", "right now", "current class"]
     if any(w in ql for w in NOW_WORDS):
         day, period, slot = _resolve_current_period()
@@ -379,9 +378,9 @@ def _inject_temporal_context(query: str) -> str:
                   f" current time slot is {slot})")
         else:
             q += f" (current day is {day}, no class in progress)"
-        return q          # handled — return early
+        return q         
 
-    # ── 2. morning / afternoon ─────────────────────────────────────────────────
+    # morning / afternoon 
     if "this morning" in ql or (ql.count("morning") > 0 and "yesterday" not in ql and "tomorrow" not in ql):
         periods = ", ".join(_MORNING_PERIODS)
         q += f" (current day is {_dname(today)}, morning = periods {periods})"
@@ -392,28 +391,28 @@ def _inject_temporal_context(query: str) -> str:
         q += f" (current day is {_dname(today)}, afternoon = periods {periods})"
         return q
 
-    # ── 3. day before yesterday ────────────────────────────────────────────────
+    # day before yesterday 
     if "day before yesterday" in ql:
         d = today - timedelta(days=2)
         q = q.replace("day before yesterday", f"{_fmt(d)} ({_dname(d)})")
         q = q.replace("Day before yesterday", f"{_fmt(d)} ({_dname(d)})")
         return q
 
-    # ── 4. yesterday ──────────────────────────────────────────────────────────
+    # yesterday 
     if "yesterday" in ql:
         d = today - timedelta(days=1)
         q = q.replace("yesterday", f"{_fmt(d)} ({_dname(d)})")
         q = q.replace("Yesterday", f"{_fmt(d)} ({_dname(d)})")
         return q
 
-    # ── 5. day after tomorrow ─────────────────────────────────────────────────
+    # day after tomorrow 
     if "day after tomorrow" in ql:
         d = today + timedelta(days=2)
         q = q.replace("day after tomorrow", f"{_fmt(d)} ({_dname(d)})")
         q = q.replace("Day after tomorrow", f"{_fmt(d)} ({_dname(d)})")
         return q
 
-    # ── 6. tomorrow / next day ─────────────────────────────────────────────────
+    # tomorrow / next day 
     if "tomorrow" in ql or "next day" in ql:
         d = today + timedelta(days=1)
         q = q.replace("tomorrow", f"{_fmt(d)} ({_dname(d)})")
@@ -422,28 +421,26 @@ def _inject_temporal_context(query: str) -> str:
         q = q.replace("Next day", f"{_fmt(d)} ({_dname(d)})")
         return q
 
-    # ── 7. today ──────────────────────────────────────────────────────────────
+    # today 
     if "today" in ql:
         q = q.replace("today", f"{_fmt(today)} ({_dname(today)})")
         q = q.replace("Today", f"{_fmt(today)} ({_dname(today)})")
         return q
 
-    # ── 8. this week ──────────────────────────────────────────────────────────
+    # this week 
     if "this week" in ql:
-        week_start = today - timedelta(days=today.weekday())   # Monday
-        week_end   = week_start + timedelta(days=4)            # Friday
+        week_start = today - timedelta(days=today.weekday())   
+        week_end   = week_start + timedelta(days=4)            
         q += f" (this week = {_fmt(week_start)} to {_fmt(week_end)})"
         return q
 
-    return q   # no temporal word found — pass through unchanged
+    return q  
 
 
 def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> dict:
     start = time.time()
 
-    # ── Pre-resolve ALL relative date/time words in Python ───────────────────
-    # The LLM parser has no idea what the actual date/time is.  We inject it
-    # as unambiguous text so it only has to copy, never to compute.
+    # Pre-resolve ALL relative date/time words in Python 
     user_query = _inject_temporal_context(user_query)
 
     parsed = parse_query(user_query, chat_history=chat_history)
@@ -470,34 +467,34 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
                     prompt = build_prompt(user_query, exam_chunks, params=parsed)
                     answer = generate_llm_answer(prompt, chat_history=chat_history)
                     return {"query": user_query, "answer": answer, "chunks_used": exam_chunks}
-            # ── Free period query ──────────────────────────────────
+            # Free period query 
             if parsed.get("free_period_query") and parsed.get("class") and parsed.get("day"):
                 free_slots = query_free_periods(parsed["class"], parsed["day"])
                 chunks = format_free_period_chunks(free_slots, parsed["class"], parsed["day"])
 
-            # ── Faculty timetable ──────────────────────────────────
+            # Faculty timetable 
             elif parsed.get("faculty_timetable_query") and parsed.get("faculty_name"):
                 raw_data = query_faculty_timetable(parsed["faculty_name"], parsed.get("day"))
                 chunks = format_timetable_chunks_v2(raw_data)
 
-            # ── Full day schedule for a class ─────────────────────
+            # Full day schedule for a class 
             elif parsed.get("full_day_query") and parsed.get("class") and parsed.get("day"):
                 raw_data = query_full_day_timetable(parsed["class"], parsed["day"])
                 chunks = format_timetable_chunks_v2(raw_data)
 
-            # ── Subject schedule ("when is DBMS for 6A?") ─────────
+            # Subject schedule ("when is DBMS for 6A?") 
             elif parsed.get("subject_schedule_query") and parsed.get("subject"):
                 raw_data = query_subject_schedule(parsed["subject"], parsed.get("class"))
                 chunks = format_timetable_chunks_v2(raw_data)
 
-            # ── Cross-class: what is happening at a given slot ────
+            # Cross-class: what is happening at a given slot 
             elif parsed.get("day") and parsed.get("period") and not parsed.get("class"):
                 raw_data = query_class_at_period(parsed["day"], parsed["period"])
                 chunks = format_timetable_chunks_v2(raw_data)
 
-            # ── Existing: specific class + day + (optional period) ─
+            # Existing: specific class + day + (optional period) 
             else:
-                raw_data = query_timetable(parsed)   # your original function
+                raw_data = query_timetable(parsed)   
                 chunks = format_timetable_chunks_v2(raw_data)
 
     elif intent == "subjects":
@@ -557,7 +554,7 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
         is_compact = parsed.get("is_list_query", False) or parsed.get("query_type") == "count"
         chunks = format_faculty_chunks(raw_data, compact=is_compact)
 
-        # ── COUNT query: count directly from SQL, never let LLM count ──
+        # COUNT query: count directly from SQL, never let LLM count 
         if parsed.get("query_type") == "count":
             exact_count = len(raw_data)
             designation = (parsed.get("designation") or "").strip()
@@ -575,7 +572,7 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
                 "chunks_used": chunks,
             }
 
-        # ── LIST query: build answer in Python, never let LLM count ──
+        # LIST query: build answer in Python, never let LLM count
         if parsed.get("is_list_query"):
             exact_count = len(raw_data)
             designation = (parsed.get("designation") or "").strip()
@@ -644,7 +641,6 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
 
     print(f"SQL TIME: {time.time() - t2:.2f}s")
 
-    # only return early for non-calendar intents
     if not chunks and intent != "calendar":
         return {
             "query": user_query,
@@ -662,7 +658,7 @@ def answer_query(user_query: str, top_k: int = 5, chat_history: list = None) -> 
     print(f"LLM TIME: {time.time() - t3:.2f}s")
     print(f"TOTAL TIME: {time.time() - start:.2f}s")
     import re
-    # fix numbers split across newlines e.g. "3\n8" → "38"
+    
     answer = re.sub(r'(\d)\n(\d)', r'\1\2', answer)
 
     answer = answer.replace("\n- ", ", ")
