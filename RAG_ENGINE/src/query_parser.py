@@ -10,7 +10,6 @@ if not GROQ_PARSER_KEY:
     raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
 
 parser_client = Groq(api_key=GROQ_PARSER_KEY)
-# fetch once at startup, reuse for all queries
 def _load_event_names() -> list:
     try:
         supabase = get_supabase_client()
@@ -163,16 +162,15 @@ EXAMPLES:
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     
-    # only add history if query contains pronouns suggesting follow-up
     follow_up_words = ["her", "him", "his", "she", "he", "they", "their", "more about", "tell more", "elaborate", "what about", "and her", "and him"]
     needs_history = any(word in user_query.lower() for word in follow_up_words)
     
     history_context = ""
     if chat_history and needs_history:
-        recent = chat_history[-2:]  # only last 1 exchange
+        recent = chat_history[-2:] 
         for msg in recent:
             role = "User" if msg["role"] == "user" else "Assistant"
-            content = msg['content'][:150]  # max 150 chars
+            content = msg['content'][:150]  
             history_context += f"{role}: {content}\n"
 
     user_content = f"Recent conversation:\n{history_context}\nCurrent query: {user_query}" if history_context else user_query
