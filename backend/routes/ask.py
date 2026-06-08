@@ -24,5 +24,5 @@ def ask_question(payload: AskRequest):
         return result
     except Exception as e:
         import traceback
-        print("FULL ERROR:\n", traceback.format_exc())  # 👈 add this line only
+        print("FULL ERROR:\n", traceback.format_exc()) 
         raise HTTPException(status_code=500, detail=str(e))
