@@ -23,11 +23,10 @@ def build_prompt(user_query: str, chunks: list, params: dict = None) -> str:
 
     context = "\n\n".join(context_lines)
 
-    # --- SAFETY NET FOR GROQ TOKEN LIMITS ---
+    # SAFETY NET FOR GROQ TOKEN LIMITS 
     MAX_CHARS = 15000
     if len(context) > MAX_CHARS:
         context = context[:MAX_CHARS] + "\n...[Context Truncated for length]"
-    # ----------------------------------------
 
     prompt = f"""
 You are an intelligent academic assistant for NMIT college students.
