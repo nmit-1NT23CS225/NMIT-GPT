@@ -557,7 +557,7 @@ def retrieve_chunks(params: dict) -> list:
             return start_date
         return (date.fromisoformat(later_dates[0]) - timedelta(days=1)).isoformat()
         
-# SUMMER VACATION DURATION — special case
+# SUMMER VACATION DURATION special case
     if query_type == "duration" and event_name == "Summer Vacations":
         vacation_rows = fetch_by_name("Summer Vacations")
         reg_rows = fetch_by_name("Registration Odd (5th & 7th) Semester")
@@ -614,7 +614,7 @@ def retrieve_chunks(params: dict) -> list:
             f"'{clean}' runs from {start_date} to {end_date}, spanning {duration} days."
         )]
 
-    # DURATION_EACH — "how many days is MSE-1 and MSE-2?"
+    # DURATION_EACH "how many days is MSE-1 and MSE-2?"
     if query_type == "duration_each" and event_name and event_name2:
         chunks = []
         for name in (event_name, event_name2):
@@ -676,15 +676,10 @@ def retrieve_chunks(params: dict) -> list:
             ))
         return chunks
 
-    # COUNT queries — all derived from DB
+    # COUNT queries all derived from DB
     if query_type == "count":
         event_type_param = (params.get("event_type") or "").lower().strip()
 
-        # ── Teaching days ─────────────────────────────────────────────────────
-        # Teaching days = days from CoC to Last Working Day that are NOT
-        # holiday / exam / co_curricular / vacation / registration.
-        # 'academic' rows (CoC, Compensatory Working Days, Last Working Day)
-        # DO count as teaching days, so we do not exclude them.
         if "teaching" in event_type_param:
             coc_rows = fetch_by_name("Commencement of Classes")
             lwd_rows = fetch_by_name("Last Working Day")
@@ -713,7 +708,7 @@ def retrieve_chunks(params: dict) -> list:
                 f"(from {sem_start} to {sem_end}, inclusive)."
             )]
 
-        # ── Saturday holidays ────────────────────────────────────────────────
+        # Saturday holidays
         if "saturday" in event_type_param:
             rows  = fetch_by_name("saturday")
             count = len(rows)
@@ -722,7 +717,7 @@ def retrieve_chunks(params: dict) -> list:
                 f"There are {count} Saturday holidays: {dates}."
             )]
 
-        # ── General / named holidays (non-Sunday, non-Saturday) ─────────────
+        #  General / named holidays (non-Sunday, non-Saturday)
         if "general" in event_type_param:
             all_holidays = fetch_by_type("holiday")
             general = [
@@ -737,7 +732,7 @@ def retrieve_chunks(params: dict) -> list:
                 f"There are {count} general/named holidays: {names}."
             )]
 
-        # ── Link holidays ────────────────────────────────────────────────────
+        # Link holidays 
         if "link" in event_type_param:
             rows  = fetch_by_name("link holiday")
             count = len(rows)
@@ -748,7 +743,7 @@ def retrieve_chunks(params: dict) -> list:
                 f"There are {count} link holidays: {dates}."
             )]
 
-        # ── Compensatory working days ─────────────────────────────────────────
+        # Compensatory working days
         if "compensatory" in event_type_param:
             rows  = fetch_by_name("compensatory working day")
             count = len(rows)
@@ -759,7 +754,7 @@ def retrieve_chunks(params: dict) -> list:
                 f"There are {count} compensatory working days: {dates}."
             )]
 
-        # ── Co-curricular days ───────────────────────────────────────────────
+        # Co-curricular days
         if "co_curricular" in event_type_param or "co curricular" in event_type_param:
             rows  = fetch_by_type("co_curricular")
             count = len(rows)
@@ -769,9 +764,8 @@ def retrieve_chunks(params: dict) -> list:
             return [make_chunk(
                 f"There are {count} co-curricular activity days: {dates}."
             )]
-        # ─────────────────────────────────────────────────────────────────────────
-    # COUNT HOLIDAYS IN A MONTH — count in Python, never let LLM count
-    # ─────────────────────────────────────────────────────────────────────────
+ 
+    # COUNT HOLIDAYS IN A MONTH count in Python, never let LLM count
     if (params.get("month") and 
         params.get("event_type") and 
         "holiday" in params.get("event_type", "").lower() and
@@ -800,9 +794,6 @@ def retrieve_chunks(params: dict) -> list:
             f"There are exactly {count} holidays in {month_name}: {names}."
         )]
    
-      # ─────────────────────────────────────────────────────────────────────────
-    # DEFAULT — delegate to existing query helpers
-    # ─────────────────────────────────────────────────────────────────────────
     data = query_calendar(params)
     
     if not data and params.get("is_college_open_query") and params.get("date"):
