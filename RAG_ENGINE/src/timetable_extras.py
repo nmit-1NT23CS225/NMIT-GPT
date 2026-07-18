@@ -17,7 +17,7 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
     if not rows:
         return []
 
-    # ── Deduplicate batch rows (6D-D1, 6D-D2, 6D-D3) into one row per time slot ──
+    # Deduplicate batch rows (6D-D1, 6D-D2, 6D-D3) into one row per time slot
     # For lab batches, keep only one representative row and set class to the base class
     seen_slots = {}
     deduped = []
@@ -65,7 +65,7 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
             or {}
         )
     return rows
-# 2. Faculty timetable — all periods a faculty teaches
+# 2. Faculty timetable all periods a faculty teaches
 def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
     """
     Return all timetable entries for a specific faculty member,
@@ -177,7 +177,7 @@ def query_free_periods(class_name: str, day: str) -> list:
     ]
 
 
-# 4. Subject schedule — when & where a subject is taught
+# 4. Subject schedule when & where a subject is taught
 def query_subject_schedule(subject: str, class_name: str = None) -> list:
     """
     Return all timetable slots for a given subject (by name or code),
