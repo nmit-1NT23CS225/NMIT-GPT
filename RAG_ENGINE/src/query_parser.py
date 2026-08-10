@@ -24,7 +24,7 @@ PARSE_SYSTEM_PROMPT = """
 You are a query parser for NMIT college. Return ONLY valid JSON. No explanation, no markdown.
 
 OUTPUT SCHEMA:
-{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"Mid-Semester Exam 1"|"Mid-Semester Exam 2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null,
+{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"MSE-1"|"MSE-2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null,
     "free_period_query": true | false,          ← user asks about free/empty periods
     "faculty_timetable_query": true | false,    ← "what does Dr. X teach this week"
     "full_day_query": true | false,             ← "what's the schedule for 6A on Monday"
@@ -102,14 +102,13 @@ CALENDAR RULES:
   Example: "schedule on 2026-05-26 (Tuesday)" → date:"2026-05-26", day:"Tuesday"
   When query contains "(current period is N)" → period:"N" exactly.
 - "when does sem start/classes begin/college reopens"→event_name:"Commencement of Classes"
-- "college reopens after summer/odd sem start"→event_name:"Registration Odd (5th & 7th) Semester"
 - "summer vacation duration/how long is summer vacation"→query_type:"gap", event_name:"Summer Vacations", event_name_2:"Registration Odd (5th & 7th) Semester"
 - Strip "Starts"/"Ends" from event_name always
 -"Unless explicitly labeled as an end date, all dates in the database represent the start date of the event or vacation period."
 - "co curricular activity 1/2/first/second" → event_type:"co_curricular", event_name:null, is_list_query:false — never guess the event_name from ordinals
 - Only set event_name when user explicitly says the event's actual name (e.g. "Anaadyanta", "MSE-1")
 
-EVENT NAMES: mse1/mse-1/mid sem 1→"Mid-Semester Exam 1" | mse2→"Mid-Semester Exam 2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
+EVENT NAMES: mse1/mse-1/mid sem 1/MSE1/mse 1→"MSE-1" | mse2→"MSE-2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
 
 EVENT TYPES: holiday/no college/off→"holiday" | registration→"registration" | compensatory/working saturday→"compensatory working days" | fest/co curricular→"co_curricular" | working days/class days→"teaching days" | saturday holiday→"saturday holidays" | general/named holiday→"general holidays" | link holiday→"link holidays" | exam queries→use event_name not event_type
 
@@ -134,8 +133,8 @@ EXAMPLES:
 "who is hod of cse"→{"intent":"faculty","designation":"head of department","department":"CSE","faculty_name":null}
 "is there college on april 15"→{"intent":"calendar","date":"2026-04-15","is_college_open_query":true}
 "who teaches DBMS to 6A"→{"intent":"subjects","subject":"database management system","class":"6A"}
-"gap between mse1 and mse2"→{"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"gap"}
-"how many days is MSE-1 and MSE-2"→{"intent":"calendar","event_name":"Mid-Semester Exam 1","event_name_2":"Mid-Semester Exam 2","query_type":"duration_each"}
+"gap between mse1 and mse2"→{"intent":"calendar","event_name":"MSE-1","event_name_2":"MSE-2","query_type":"gap"}
+"how many days is MSE-1 and MSE-2"→{"intent":"calendar","event_name":"MSE-1","event_name_2":"MSE-2","query_type":"duration_each"}
 "tell me about deepthi mam"→{"intent":"faculty","faculty_name":"Deepthi"}
 "list all assistant professors"→{"intent":"faculty","designation":"assistant professor","is_list_query":true}
 "which room is lab 9 in"→{"intent":"lab","lab_name":"LAB9","lab_query_type":"structured"}
@@ -159,6 +158,7 @@ EXAMPLES:
 "who handles game theory"→{"intent":"subjects","subject":"Game Theory","class":null}
 "list faculties who take AIML" → {intent:subjects}
 "List the teacher who takes BDT"->{intent:subjects}
+"When does classes end?"->{intent:calendar,event_name:End of Classes}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

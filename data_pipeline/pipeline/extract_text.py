@@ -171,7 +171,7 @@ def extract_academic_calendar(pdf_path: str) -> list[dict]:
     }
 
     Rules:
-    - Year is 2026 for Jan-Aug dates in this Even Semester calendar
+    - Year is 2026 for July-Jan dates in this Odd Semester calendar
     - Include all holidays, exams (MSE-1, MSE-2, SEE), co-curricular days,
     compensatory working days, and important deadlines
     - event_type must be one of the 6 values listed above

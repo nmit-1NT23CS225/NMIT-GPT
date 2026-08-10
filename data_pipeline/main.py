@@ -61,7 +61,7 @@ from pipeline.extract_text import extract_academic_calendar
 from pipeline.load_to_db import load_calendar_to_supabase
 
 load_env()
-events = extract_academic_calendar(r"data\academic_calendar.pdf")
+events = extract_academic_calendar(r"C:\Shini\Nmit GPT Project\NMIT-GPT1\data_pipeline\Academic Calendar AY 2026-27 5th & 7th Semester (UG Program BE).pdf")
 print(f"✓ Extracted {len(events)} events")
 
 load_calendar_to_supabase(events)
