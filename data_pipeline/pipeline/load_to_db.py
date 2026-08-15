@@ -273,6 +273,6 @@ import os
 
 def load_calendar_to_supabase(events: list[dict]):
     supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-    supabase.table("academic_calendar_duplicate").insert(events).execute()
+    supabase.table("academic_calendar").insert(events).execute()
     print(f"✓ Inserted {len(events)} events into Supabase")
 
