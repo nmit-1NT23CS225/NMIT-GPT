@@ -63,7 +63,39 @@
   .theme-toggle { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); transition: all 0.2s; }
   .theme-toggle:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); }
   .theme-toggle svg { width: 16px; height: 16px; }
+  .login-theme-toggle { position: absolute; top: 20px; right: 20px; }
   .sidebar-footer-text { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+  /* ── AUTH GATE ── */
+  .login-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); z-index: 500; }
+  .login-card { width: 340px; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: var(--shadow-md); }
+  .login-logo { width: 44px; height: 44px; background: linear-gradient(135deg, var(--blue-600), var(--blue-400)); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .login-logo svg { width: 22px; height: 22px; fill: white; }
+  .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .login-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  .login-type-tabs { display: flex; gap: 6px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 18px; }
+  .login-type-tab { flex: 1; padding: 8px 6px; border: none; background: transparent; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all .15s; font-family: 'Sora', sans-serif; }
+  .login-type-tab:hover { color: var(--text-primary); }
+  .login-type-tab.active { background: var(--bg); color: var(--accent); box-shadow: var(--shadow-sm); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
+  .field input, .field select { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px; background: var(--bg-input); color: var(--text-primary); font-size: 13.5px; outline: none; transition: border-color .2s; font-family: 'Sora', sans-serif; }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .login-btn { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-weight: 600; font-size: 13.5px; cursor: pointer; margin-top: 6px; transition: background .2s; }
+  .login-btn:hover { background: var(--accent-hover); }
+  .login-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+  .login-error { font-size: 12.5px; color: #dc2626; margin-top: 10px; display: none; }
+  [data-theme="dark"] .login-error { color: #f87171; }
+  .auth-toggle { text-align: center; font-size: 12.5px; color: var(--text-secondary); margin-top: 16px; }
+  .auth-toggle a { color: var(--accent); font-weight: 600; text-decoration: none; cursor: pointer; }
+  .auth-toggle a:hover { text-decoration: underline; }
+  .user-badge { display: flex; flex-direction: column; line-height: 1.3; }
+  .user-badge .u-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+  .user-badge .u-role { font-size: 10px; color: var(--text-muted); text-transform: capitalize; }
+  .sidebar-actions { display: flex; align-items: center; gap: 6px; }
+  .icon-link { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); transition: all 0.2s; text-decoration: none; }
+  .icon-link:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); }
+  .icon-link svg { width: 16px; height: 16px; }
 
   /* MAIN */
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
@@ -140,6 +172,56 @@
 </head>
 <body>
 
+<!-- ══════════ AUTH GATE ══════════ -->
+<div class="login-screen" id="loginScreen">
+  <button class="theme-toggle login-theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+    <svg id="loginThemeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  </button>
+  <div class="login-card">
+    <div class="login-logo"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+    <h1 id="authTitle">Sign In</h1>
+    <p id="authSub">Sign in to chat with NMIT-GPT</p>
+
+    <div class="login-type-tabs" id="loginTypeTabs">
+      <button type="button" class="login-type-tab active" id="tabUser" onclick="switchLoginType('user')">Student / Faculty</button>
+      <button type="button" class="login-type-tab" id="tabAdmin" onclick="switchLoginType('admin')">Admin</button>
+    </div>
+
+    <div class="field" id="nameField" style="display:none;">
+      <label>Full Name</label>
+      <input type="text" id="authName" placeholder="Jane Doe" autocomplete="name">
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="authUser" placeholder="e.g. your USN or faculty ID" autocomplete="username">
+    </div>
+    <div class="field" id="roleField" style="display:none;">
+      <label>I am a</label>
+      <select id="authRole">
+        <option value="student">Student</option>
+        <option value="faculty">Faculty</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="login-btn" id="authBtn" onclick="submitAuth()">Sign In</button>
+    <div class="login-error" id="authError"></div>
+
+    <div class="auth-toggle" id="authToggle">
+      New here? <a onclick="switchAuthMode('register')">Create an account</a>
+    </div>
+  </div>
+</div>
+
 <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
 
 <aside class="sidebar" id="sidebar">
@@ -162,16 +244,27 @@
     <div class="history-empty">No chats yet.<br>Start a conversation!</div>
   </div>
   <div class="sidebar-bottom">
-    <div class="sidebar-footer-text">NMIT · CSE Dept</div>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="5"/>
-        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-      </svg>
-    </button>
+    <div class="user-badge">
+      <span class="u-name" id="userNameLabel">—</span>
+      <span class="u-role" id="userRoleLabel">—</span>
+    </div>
+    <div class="sidebar-actions">
+      <a href="admin.html" class="icon-link" id="adminLink" title="Admin panel" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </a>
+      <button class="icon-link" onclick="logout()" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </aside>
 
@@ -236,12 +329,174 @@
 
 <script>
   const API_URL = 'http://localhost:8000/ask/';
-  let chats = JSON.parse(localStorage.getItem('nmit_chats') || '[]');
+  const API_BASE = 'http://localhost:8000';
+  let chats = [];
   let currentChatId = null;
   let isLoading = false;
 
+  // ── AUTH ──
+  let authMode = 'login'; // 'login' | 'register'
+  let loginType = 'user'; // 'user' | 'admin'
+
+  function getToken() { return localStorage.getItem('nmit_token'); }
+  function getUserInfo() {
+    try { return JSON.parse(localStorage.getItem('nmit_user') || 'null'); }
+    catch { return null; }
+  }
+
+  // ── PER-USER CHAT STORAGE ──
+  // Each account's chat history is stored under its own key so different
+  // users on the same browser never see each other's conversations.
+  function chatsStorageKey() {
+    const user = getUserInfo();
+    const id = (user && user.username) ? user.username : 'guest';
+    return `nmit_chats_${id}`;
+  }
+  function loadChatsForCurrentUser() {
+    try { chats = JSON.parse(localStorage.getItem(chatsStorageKey()) || '[]'); }
+    catch { chats = []; }
+  }
+  function saveChats() {
+    localStorage.setItem(chatsStorageKey(), JSON.stringify(chats));
+  }
+
+  function switchLoginType(type) {
+    loginType = type;
+    document.getElementById('authError').style.display = 'none';
+    document.getElementById('tabUser').classList.toggle('active', type === 'user');
+    document.getElementById('tabAdmin').classList.toggle('active', type === 'admin');
+
+    if (type === 'admin') {
+      // Admin accounts aren't self-registered, so drop back to plain sign-in
+      // and hide the "create an account" option entirely.
+      authMode = 'login';
+      document.getElementById('authToggle').style.display = 'none';
+      document.getElementById('nameField').style.display = 'none';
+      document.getElementById('roleField').style.display = 'none';
+      document.getElementById('authTitle').textContent = 'Admin Sign In';
+      document.getElementById('authSub').textContent = 'Sign in with your admin account';
+      document.getElementById('authBtn').textContent = 'Sign In';
+    } else {
+      document.getElementById('authToggle').style.display = 'block';
+      switchAuthMode('login');
+    }
+  }
+
+  function switchAuthMode(mode) {
+    authMode = mode;
+    document.getElementById('authError').style.display = 'none';
+    if (mode === 'register') {
+      document.getElementById('authTitle').textContent = 'Create Account';
+      document.getElementById('authSub').textContent = 'Sign up as a student or faculty member';
+      document.getElementById('nameField').style.display = 'block';
+      document.getElementById('roleField').style.display = 'block';
+      document.getElementById('authBtn').textContent = 'Create Account';
+      document.getElementById('authToggle').innerHTML = 'Already have an account? <a onclick="switchAuthMode(\'login\')">Sign in</a>';
+    } else {
+      document.getElementById('authTitle').textContent = 'Sign In';
+      document.getElementById('authSub').textContent = 'Sign in to chat with NMIT-GPT';
+      document.getElementById('nameField').style.display = 'none';
+      document.getElementById('roleField').style.display = 'none';
+      document.getElementById('authBtn').textContent = 'Sign In';
+      document.getElementById('authToggle').innerHTML = 'New here? <a onclick="switchAuthMode(\'register\')">Create an account</a>';
+    }
+  }
+
+  async function submitAuth() {
+    const errEl = document.getElementById('authError');
+    errEl.style.display = 'none';
+    const username = document.getElementById('authUser').value.trim();
+    const password = document.getElementById('authPass').value;
+    const btn = document.getElementById('authBtn');
+
+    if (!username || !password) {
+      errEl.textContent = 'Please fill in username and password.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    let url, body;
+    if (authMode === 'register') {
+      const name = document.getElementById('authName').value.trim();
+      const role = document.getElementById('authRole').value;
+      if (!name) {
+        errEl.textContent = 'Please enter your full name.';
+        errEl.style.display = 'block';
+        return;
+      }
+      url = `${API_BASE}/auth/register`;
+      body = { name, username, password, role };
+    } else {
+      url = `${API_BASE}/auth/login`;
+      body = { username, password };
+    }
+
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = authMode === 'register' ? 'Creating…' : 'Signing in…';
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Something went wrong.');
+
+      if (loginType === 'admin' && data.role !== 'admin') {
+        throw new Error('This account does not have admin access.');
+      }
+
+      localStorage.setItem('nmit_token', data.access_token);
+      localStorage.setItem('nmit_user', JSON.stringify({ name: data.name, role: data.role, username }));
+
+      if (loginType === 'admin') {
+        // admin.html reads its session from separate 'nmit_admin_*' keys
+        // (kept distinct on purpose so the admin panel isn't silently
+        // usable just because a chat session exists) - mirror the token
+        // there too so this redirect actually lands signed in instead of
+        // bouncing back to admin.html's own login screen.
+        localStorage.setItem('nmit_admin_token', data.access_token);
+        localStorage.setItem('nmit_admin_name', data.name);
+        window.location.href = 'admin.html';
+        return;
+      }
+      enterApp();
+    } catch (e) {
+      errEl.textContent = e.message || 'Could not reach the server. Is the backend running on port 8000?';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('nmit_token');
+    localStorage.removeItem('nmit_user');
+    location.reload();
+  }
+
+  function enterApp() {
+    const user = getUserInfo();
+    document.getElementById('loginScreen').style.display = 'none';
+    if (user) {
+      document.getElementById('userNameLabel').textContent = user.name;
+      document.getElementById('userRoleLabel').textContent = user.role;
+      document.getElementById('adminLink').style.display = user.role === 'admin' ? 'flex' : 'none';
+    }
+    loadChatsForCurrentUser();
+    currentChatId = null;
+    newChat();
+  }
+
+  if (getToken()) {
+    enterApp();
+  }
+
+
   // ── INIT ──
-  renderHistory();
   document.getElementById('inputBox').addEventListener('input', () => {
     const val = document.getElementById('inputBox').value.trim();
     document.getElementById('sendBtn').disabled = val === '' || isLoading;
@@ -261,18 +516,19 @@
   }
 
   function updateThemeIcon(theme) {
-    const icon = document.getElementById('themeIcon');
-    if (theme === 'dark') {
-      icon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
-    } else {
-      icon.innerHTML = `
+    const iconHtmlDark = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+    const iconHtmlLight = `
         <circle cx="12" cy="12" r="5"/>
         <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
         <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
         <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
         <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       `;
-    }
+    const html = theme === 'dark' ? iconHtmlDark : iconHtmlLight;
+    ['themeIcon', 'loginThemeIcon'].forEach(id => {
+      const icon = document.getElementById(id);
+      if (icon) icon.innerHTML = html;
+    });
   }
 
   // ── SIDEBAR ──
@@ -333,7 +589,7 @@
   function deleteChat(chatId, e) {
     e.stopPropagation();
     chats = chats.filter(c => c.id !== chatId);
-    localStorage.setItem('nmit_chats', JSON.stringify(chats));
+    saveChats();
     if (currentChatId === chatId) newChat();
     else renderHistory();
   }
@@ -417,9 +673,18 @@
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`,
+        },
         body: JSON.stringify({ question: query, history: history })
       });
+
+      if (res.status === 401) {
+        typingEl.remove();
+        logout();
+        return;
+      }
 
       const data = await res.json();
       typingEl.remove();
@@ -474,7 +739,7 @@
     const chat = chats.find(c => c.id === currentChatId);
     if (chat) {
       chat.messages.push({ role, content, time });
-      localStorage.setItem('nmit_chats', JSON.stringify(chats));
+      saveChats();
     }
   }
 
